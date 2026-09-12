@@ -5,6 +5,11 @@ database, one R2 bucket, any number of desktop apps.
 
 ![Herald](assets/screenshot.png)
 
+Publishing is a picker, not a form: choose the app, choose or add the version,
+drop the builds. Each release shows what it has per OS.
+
+![Publishing in Herald](assets/screenshot-admin.png)
+
 Herald stores one neutral release shape and projects it into whatever dialect
 each updater speaks, so a Tauri app and an Electron app can live in the same
 deployment and be published the same way.
