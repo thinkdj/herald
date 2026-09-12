@@ -1,0 +1,23 @@
+<section class="mx-auto mt-10 max-w-sm">
+  <div class="mb-6 flex items-center gap-3">
+    <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-seal-soft text-seal dark:bg-seal-bright/15 dark:text-seal-bright">
+      <i class="iconoir-lock text-xl"></i>
+    </span>
+    <div>
+      <h1 class="text-xl font-semibold tracking-tight">Sign in to publish</h1>
+      <p class="text-sm text-stone-600 dark:text-stone-400">Feeds and downloads stay public.</p>
+    </div>
+  </div>
+  <form method="post" action="/login" class="card space-y-4 p-5">
+    {{{error}}}
+    <div>
+      <label class="label" for="username">Username</label>
+      <input class="field" id="username" name="username" autocomplete="username" autofocus required />
+    </div>
+    <div>
+      <label class="label" for="password">Password</label>
+      <input class="field" id="password" name="password" type="password" autocomplete="current-password" required />
+    </div>
+    <button class="btn-primary w-full" type="submit">Sign in</button>
+  </form>
+</section>

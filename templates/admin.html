@@ -1,0 +1,443 @@
+<div class="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+  <aside>
+    <div class="mb-3 flex items-center justify-between">
+      <h1 class="text-sm font-semibold text-stone-600 dark:text-stone-400">Apps</h1>
+      <button class="icon-btn" id="new-app" type="button" title="New app"><i class="iconoir-plus text-lg"></i></button>
+    </div>
+    <form class="card mb-3 space-y-3 p-3" id="app-form" hidden>
+      <input class="field font-mono" id="app-slug" placeholder="slug, for example ctx" pattern="[a-z0-9][a-z0-9-]{0,62}" required />
+      <input class="field" id="app-name" placeholder="Display name" required />
+      <label class="flex items-center gap-2 text-sm text-stone-600 dark:text-stone-400">
+        <input type="checkbox" id="app-unlisted" class="accent-seal" /> Unlisted
+        <span class="text-xs text-stone-400" title="Kept off the home page. Its own page, feeds and downloads still work.">(off the home page)</span>
+      </label>
+      <div class="flex gap-2">
+        <button class="btn-primary flex-1" type="submit">Create app</button>
+        <button class="btn-quiet" type="button" id="app-cancel">Cancel</button>
+      </div>
+    </form>
+    <ul class="space-y-0.5" id="apps"></ul>
+  </aside>
+
+  <section id="main" class="min-w-0"></section>
+</div>
+
+<script type="application/json" id="boot">{{{boot}}}</script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const boot = JSON.parse($("boot").textContent);
+  const KEYS = boot.platforms;
+  const OS = [
+    ["windows", "Windows", "iconoir-windows", "windows"],
+    ["darwin", "macOS", "iconoir-apple-mac", "macos"],
+    ["linux", "Linux", "iconoir-linux", "linux"],
+  ];
+
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const size = (n) => (n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
+  const when = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const semver = (raw) => {
+    const v = raw.trim().replace(/^v/, "").replace(/^(\d+)(\.\d+)?(?=$|[-+])/, (_, a, b) => a + (b ?? ".0") + ".0");
+    return /^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/.test(v) ? v : null;
+  };
+  const api = async (method, path, body, headers = {}) => {
+    const res = await fetch(path, {
+      method,
+      headers: body && !(body instanceof File) ? { "content-type": "application/json", ...headers } : headers,
+      body: body instanceof File ? body : body ? JSON.stringify(body) : undefined,
+    });
+    const out = res.status === 204 ? {} : await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error ?? `${res.status} on ${path}`);
+    return out;
+  };
+
+  // Mirrors guessPlatform in lib/feeds.js. Duplicated on purpose: pre-filling
+  // a dropdown is not worth a round trip, and the worker validates the key it
+  // is actually sent.
+  function guess(name) {
+    const f = name.toLowerCase();
+    const arch = /aarch64|arm64/.test(f) ? "aarch64" : "x86_64";
+    if (f.endsWith(".msi") || f.endsWith(".exe")) return "windows-" + arch;
+    if (f.endsWith(".app.tar.gz") || f.endsWith(".dmg") || f.endsWith(".app.zip"))
+      return /universal/.test(f) ? "darwin-universal" : "darwin-" + arch;
+    if (/\.(appimage|deb|rpm)$/.test(f)) return "linux-" + arch;
+    return "";
+  }
+
+  // ------------------------------------------------------------------ state
+
+  const S = { apps: boot.apps, slug: null, versions: [], version: null, release: null, queue: [], busy: false, note: "" };
+
+  async function loadApps() {
+    S.apps = (await api("GET", "/admin?format=json")).apps;
+    renderApps();
+  }
+  async function selectApp(slug, version) {
+    S.slug = slug;
+    S.queue = [];
+    S.versions = slug ? (await api("GET", `/${slug}/releases`)).releases : [];
+    renderApps();
+    await selectVersion(version ?? S.versions[0]?.version ?? "new");
+  }
+  async function selectVersion(v) {
+    S.version = v;
+    S.release = v === "new" ? null : await api("GET", `/${S.slug}/releases/${v}`);
+    S.note = "";
+    location.hash = S.slug ? `${S.slug}/${v}` : "";
+    renderMain();
+  }
+
+  // ------------------------------------------------------------------ apps
+
+  function renderApps() {
+    $("apps").innerHTML = S.apps.length
+      ? S.apps
+          .map(
+            (a) => `<li><button data-slug="${esc(a.slug)}" class="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition ${
+              a.slug === S.slug
+                ? "bg-card font-medium shadow-sm ring-1 ring-line dark:bg-card-dark dark:ring-line-dark"
+                : "text-stone-600 hover:bg-stone-200/60 dark:text-stone-400 dark:hover:bg-stone-800/60"
+            }"><span class="truncate">${esc(a.name)}</span><span class="shrink-0 font-mono text-xs text-stone-400">${esc(a.version ?? "")}</span></button></li>`,
+          )
+          .join("")
+      : `<li class="px-2.5 py-2 text-sm text-stone-500">No apps yet. Create one to start publishing.</li>`;
+    for (const b of $("apps").querySelectorAll("button")) b.onclick = () => selectApp(b.dataset.slug);
+  }
+
+  $("new-app").onclick = () => {
+    $("app-form").hidden = false;
+    $("app-slug").focus();
+  };
+  $("app-cancel").onclick = () => ($("app-form").hidden = true);
+  $("app-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const slug = $("app-slug").value.trim();
+    try {
+      await api("PUT", `/${slug}`, { name: $("app-name").value.trim() || slug, unlisted: $("app-unlisted").checked });
+      $("app-form").hidden = true;
+      $("app-form").reset();
+      await loadApps();
+      await selectApp(slug);
+    } catch (err) {
+      alertLine($("app-form"), err.message);
+    }
+  };
+  function alertLine(parent, msg) {
+    let el = parent.querySelector(".alert");
+    if (!el) {
+      el = document.createElement("p");
+      el.className = "alert text-sm text-seal dark:text-seal-bright";
+      parent.append(el);
+    }
+    el.textContent = msg;
+  }
+
+  // ------------------------------------------------------------------ main
+
+  function links(a) {
+    if (!a.version) return [];
+    return [
+      ...(a.signed ? [["iconoir-rss-feed", "Tauri feed", `/${a.slug}/latest.json`]] : []),
+      ...(a.hashed ? [["iconoir-rss-feed", "Electron feed", `/${a.slug}/latest.yml`]] : []),
+      ["iconoir-journal", "History", `/${a.slug}/releases`],
+      ...OS.filter(([os]) => a.platforms.some((p) => p.startsWith(os))).map(([, label, icon, alias]) => [
+        icon,
+        `Download for ${label}`,
+        `/${a.slug}/download/${alias}`,
+      ]),
+    ];
+  }
+
+  function renderMain() {
+    const app = S.apps.find((a) => a.slug === S.slug);
+    if (!app) {
+      $("main").innerHTML = `<div class="card flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
+        <i class="iconoir-package text-3xl text-stone-400"></i>
+        <p class="text-sm text-stone-600 dark:text-stone-400">Pick an app on the left, or create one.</p>
+      </div>`;
+      return;
+    }
+    const isNew = S.version === "new";
+    const rel = S.release;
+    const rows = links(app)
+      .map(
+        ([icon, label, href]) => `<tr class="border-t border-line dark:border-line-dark">
+          <td class="whitespace-nowrap py-1.5 pl-4 pr-4 text-stone-600 dark:text-stone-400"><span class="inline-flex items-center gap-1.5"><i class="${icon} text-base leading-none text-stone-400"></i>${esc(label)}</span></td>
+          <td class="w-full break-all py-1.5 font-mono text-xs"><a class="hover:underline" href="${esc(href)}">${esc(location.origin + href)}</a></td>
+          <td class="py-0.5 pr-2"><button class="icon-btn" data-copy="${esc(location.origin + href)}" title="Copy"><i class="iconoir-copy"></i></button></td>
+        </tr>`,
+      )
+      .join("");
+
+    $("main").innerHTML = `
+      <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-semibold tracking-tight"><a class="hover:underline" href="/${esc(app.slug)}">${esc(app.name)}</a></h2>
+          <p class="mt-1 font-mono text-sm text-stone-500">${esc(app.slug)}</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="flex cursor-pointer items-center gap-2 text-sm text-stone-600 dark:text-stone-400" title="Kept off the home page. Its own page, feeds and downloads still work.">
+            <input type="checkbox" id="unlisted" class="accent-seal" ${app.unlisted ? "checked" : ""} /> Unlisted
+          </label>
+          <button class="btn-danger" id="del-app" type="button"><i class="iconoir-trash"></i>Delete app</button>
+        </div>
+      </div>
+
+      ${rows ? `<div class="card mb-8 overflow-x-auto"><table class="w-full text-sm"><tbody>${rows}</tbody></table></div>` : ""}
+
+      <div class="mb-4 flex flex-wrap items-center gap-2">
+        <span class="mr-1 text-sm text-stone-600 dark:text-stone-400">Versions</span>
+        ${S.versions
+          .map(
+            (r) => `<button data-v="${esc(r.version)}" class="rounded-full border px-3 py-1 font-mono text-xs transition ${
+              r.version === S.version
+                ? "border-seal bg-seal text-white dark:border-seal-bright dark:bg-seal-bright dark:text-stone-950"
+                : "border-line bg-card text-stone-700 hover:border-stone-400 dark:border-line-dark dark:bg-card-dark dark:text-stone-300"
+            }">${esc(r.version)}<span class="ml-1.5 opacity-60">${r.platforms.length}</span></button>`,
+          )
+          .join("")}
+        <button data-v="new" class="rounded-full border border-dashed px-3 py-1 text-xs transition ${
+          isNew ? "border-seal text-seal dark:border-seal-bright dark:text-seal-bright" : "border-stone-400 text-stone-600 hover:border-stone-500 dark:text-stone-400"
+        }"><i class="iconoir-plus"></i> New version</button>
+      </div>
+
+      <div class="card">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 dark:border-line-dark">
+          ${
+            isNew
+              ? `<div class="flex items-center gap-3"><label class="text-sm text-stone-600 dark:text-stone-400" for="ver">Version</label>
+                 <input class="field !w-36 font-mono" id="ver" placeholder="0.2.0" /></div>`
+              : `<div><span class="font-mono text-lg font-medium">${esc(rel.version)}</span>
+                 <span class="ml-2 text-sm text-stone-500">published ${when(rel.pub_date)}</span></div>
+                 <button class="btn-danger" id="unpublish" type="button"><i class="iconoir-bin-minus-in"></i>Unpublish</button>`
+          }
+        </div>
+
+        <div class="grid gap-px bg-line dark:bg-line-dark sm:grid-cols-3">
+          ${OS.map(([os, label, icon]) => osColumn(os, label, icon)).join("")}
+        </div>
+
+        <div class="space-y-4 border-t border-line p-5 dark:border-line-dark">
+          <div id="drop" class="cursor-pointer rounded-md border border-dashed border-stone-400 px-6 py-8 text-center text-sm text-stone-600 transition hover:border-seal hover:bg-seal-soft/40 dark:text-stone-400 dark:hover:border-seal-bright dark:hover:bg-seal-bright/5">
+            <i class="iconoir-cloud-upload text-2xl"></i>
+            <div class="mt-1">Drop installers and their .sig files, or click to choose</div>
+          </div>
+          <input id="picker" type="file" multiple hidden />
+          <div id="queue">${queueTable()}</div>
+          <div>
+            <label class="label" for="notes">Release notes</label>
+            <textarea class="field min-h-20 resize-y" id="notes" placeholder="What changed.">${esc(rel?.notes ?? "")}</textarea>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <button class="btn-primary" id="publish" type="button"><i class="iconoir-upload"></i><span>Publish</span></button>
+            <p id="status" class="text-sm text-stone-600 dark:text-stone-400">${esc(S.note)}</p>
+          </div>
+        </div>
+      </div>`;
+
+    for (const b of $("main").querySelectorAll("[data-v]")) b.onclick = () => selectVersion(b.dataset.v);
+    $("unlisted").onchange = async () => {
+      try {
+        await api("PUT", `/${S.slug}`, { unlisted: $("unlisted").checked });
+        app.unlisted = $("unlisted").checked;
+      } catch (err) {
+        status(err.message, "bad");
+      }
+    };
+    for (const b of $("main").querySelectorAll("[data-rm]")) b.onclick = () => removeArtifact(b.dataset.rm);
+    $("del-app").onclick = () =>
+      guarded(
+        confirmDialog(`Delete ${app.name}?`, "Every release and feed goes with it. Uploaded files stay in the bucket.", "Delete app"),
+        async () => {
+          await api("DELETE", `/${S.slug}`);
+          await loadApps();
+          await selectApp(null);
+        },
+      );
+    if ($("unpublish")) {
+      $("unpublish").onclick = () =>
+        guarded(
+          confirmDialog(`Unpublish ${S.version}?`, "Updaters fall back to the previous release. Uploaded files stay in the bucket.", "Unpublish"),
+          async () => {
+            await api("DELETE", `/${S.slug}/releases/${S.version}`);
+            await loadApps();
+            await selectApp(S.slug);
+          },
+        );
+    }
+    $("drop").onclick = () => $("picker").click();
+    $("picker").onchange = (e) => take(e.target.files);
+    $("drop").ondragover = (e) => {
+      e.preventDefault();
+      $("drop").classList.add("border-seal");
+    };
+    $("drop").ondragleave = () => $("drop").classList.remove("border-seal");
+    $("drop").ondrop = (e) => {
+      e.preventDefault();
+      take(e.dataTransfer.files);
+    };
+    $("publish").onclick = publish;
+    bindQueue();
+    updatePublish();
+  }
+
+  // Runs fn only after the confirm dialog resolves true; errors land in the
+  // status line instead of the console.
+  const guarded = async (ask, fn) => {
+    if (!(await ask)) return;
+    try {
+      await fn();
+    } catch (err) {
+      status(err.message, "bad");
+    }
+  };
+
+  function osColumn(os, label, icon) {
+    const have = (S.release?.artifacts ?? []).filter((a) => a.platform.startsWith(os));
+    const queued = S.queue.filter((q) => q.platform.startsWith(os)).length;
+    return `<div class="bg-card p-4 dark:bg-card-dark">
+      <div class="mb-3 flex items-center gap-2 text-sm font-medium"><i class="${icon} text-lg"></i>${label}
+        ${queued ? `<span class="ml-auto text-xs text-seal dark:text-seal-bright">+${queued} queued</span>` : ""}</div>
+      ${
+        have.length
+          ? have
+              .map(
+                (a) => `<div class="group flex items-start gap-2 py-1.5 text-sm">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="chip">${esc(a.platform.slice(os.length + 1))}</span>
+                      ${a.signed ? `<span class="text-[11px] text-emerald-700 dark:text-emerald-400"><i class="iconoir-shield-check"></i> Tauri</span>` : ""}
+                      ${a.hashed ? `<span class="text-[11px] text-emerald-700 dark:text-emerald-400"><i class="iconoir-check-circle"></i> Electron</span>` : ""}
+                    </div>
+                    <a class="mt-0.5 block truncate font-mono text-xs text-stone-600 hover:underline dark:text-stone-400" href="${esc(a.url)}" title="${esc(a.url)}">${esc(a.url.split("/").pop())}</a>
+                    <div class="text-xs text-stone-400">${a.size ? size(a.size) : "size unknown"}</div>
+                  </div>
+                  <button class="icon-btn opacity-0 transition group-hover:opacity-100 focus:opacity-100" data-rm="${esc(a.platform)}" title="Remove ${esc(a.platform)}"><i class="iconoir-xmark"></i></button>
+                </div>`,
+              )
+              .join("")
+          : `<p class="text-sm text-stone-400">No build yet</p>`
+      }
+    </div>`;
+  }
+
+  // ------------------------------------------------------------------ queue
+
+  function pair(files) {
+    const sigs = new Map();
+    for (const f of files) if (f.name.endsWith(".sig")) sigs.set(f.name.slice(0, -4), f);
+    return files
+      .filter((f) => !f.name.endsWith(".sig"))
+      .map((f) => ({ file: f, sig: sigs.get(f.name) ?? null, platform: guess(f.name) }));
+  }
+  function take(files) {
+    const have = S.queue.flatMap((r) => [r.file, r.sig]).filter(Boolean);
+    const names = new Set([...files].map((f) => f.name));
+    S.queue = pair([...have.filter((f) => !names.has(f.name)), ...files]);
+    if (S.version === "new" && $("ver") && !$("ver").value) {
+      const m = S.queue[0]?.file.name.match(/(\d+\.\d+(\.\d+)?)/);
+      if (m) $("ver").value = m[1];
+    }
+    renderMain();
+  }
+  function queueTable() {
+    if (!S.queue.length) return "";
+    return `<table class="w-full text-sm"><tbody>${S.queue
+      .map(
+        (r, i) => `<tr class="border-t border-line first:border-0 dark:border-line-dark">
+          <td class="break-all py-2 pr-3 font-mono text-xs">${esc(r.file.name)}</td>
+          <td class="whitespace-nowrap py-2 pr-3 text-xs text-stone-500">${size(r.file.size)}</td>
+          <td class="whitespace-nowrap py-2 pr-3 text-xs">${r.sig ? `<span class="text-emerald-700 dark:text-emerald-400"><i class="iconoir-shield-check"></i> signed</span>` : `<span class="text-stone-400">no .sig</span>`}</td>
+          <td class="py-1 pr-2"><select data-i="${i}" class="field !w-auto !py-1 font-mono text-xs">${["", ...KEYS]
+            .map((k) => `<option${k === r.platform ? " selected" : ""}>${k || "choose platform"}</option>`)
+            .join("")}</select></td>
+          <td class="py-1 text-right"><button class="icon-btn" data-x="${i}" title="Remove"><i class="iconoir-xmark"></i></button></td>
+        </tr>`,
+      )
+      .join("")}</tbody></table>`;
+  }
+  function bindQueue() {
+    for (const s of $("queue").querySelectorAll("select")) {
+      s.onchange = () => {
+        S.queue[s.dataset.i].platform = s.value === "choose platform" ? "" : s.value;
+        renderMain();
+      };
+    }
+    for (const b of $("queue").querySelectorAll("[data-x]")) {
+      b.onclick = () => {
+        S.queue.splice(b.dataset.x, 1);
+        renderMain();
+      };
+    }
+  }
+  function updatePublish() {
+    const n = S.queue.length;
+    const label = S.version === "new" ? "Publish new version" : n ? `Publish ${n} file${n > 1 ? "s" : ""} to ${S.version}` : "Save notes";
+    $("publish").lastElementChild.textContent = label;
+    $("publish").disabled = S.busy || (S.version === "new" && !n);
+  }
+  const status = (msg, tone) => {
+    S.note = msg;
+    const el = $("status");
+    if (!el) return;
+    el.textContent = msg;
+    el.className = "text-sm " + (tone === "bad" ? "text-seal dark:text-seal-bright" : tone === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-stone-600 dark:text-stone-400");
+  };
+
+  // ------------------------------------------------------------------ actions
+
+  async function sha512(file) {
+    const digest = await crypto.subtle.digest("SHA-512", await file.arrayBuffer());
+    return btoa(String.fromCharCode(...new Uint8Array(digest)));
+  }
+
+  async function publish() {
+    const version = S.version === "new" ? semver($("ver").value) : S.version;
+    if (!version) return status("Version must be semver, for example 0.2.0.", "bad");
+    if (S.queue.some((r) => !r.platform)) return status("Choose a platform for every file.", "bad");
+    S.busy = true;
+    updatePublish();
+    try {
+      const artifacts = {};
+      for (const r of S.queue) {
+        status(`Hashing ${r.file.name}`);
+        const hash = await sha512(r.file);
+        status(`Uploading ${r.file.name} (${size(r.file.size)})`);
+        const out = await api("PUT", `/${S.slug}/upload/${version}/${encodeURIComponent(r.file.name)}`, r.file, { "x-herald-sha512": hash });
+        artifacts[r.platform] = { url: out.url, sha512: hash, size: r.file.size };
+        if (r.sig) artifacts[r.platform].signature = (await r.sig.text()).trim();
+      }
+      status("Publishing");
+      await api("POST", `/${S.slug}/releases`, { version, notes: $("notes").value, artifacts });
+      S.queue = [];
+      await loadApps();
+      S.versions = (await api("GET", `/${S.slug}/releases`)).releases;
+      await selectVersion(version);
+      status(`Published ${version}.`, "ok");
+    } catch (err) {
+      status(err.message, "bad");
+    }
+    S.busy = false;
+    updatePublish();
+  }
+
+  const removeArtifact = (platform) =>
+    guarded(
+      confirmDialog(`Remove ${platform} from ${S.version}?`, "Its feed stops offering this platform. The uploaded file stays in the bucket.", "Remove"),
+      async () => {
+        await api("DELETE", `/${S.slug}/releases/${S.version}/${platform}`);
+        await loadApps();
+        S.versions = (await api("GET", `/${S.slug}/releases`)).releases;
+        if (S.versions.some((r) => r.version === S.version)) await selectVersion(S.version);
+        else await selectApp(S.slug);
+      },
+    );
+
+  // ------------------------------------------------------------------ boot
+
+  renderApps();
+  const [slug, version] = location.hash.slice(1).split("/");
+  if (slug && S.apps.some((a) => a.slug === slug)) selectApp(slug, version || undefined);
+  else renderMain();
+</script>

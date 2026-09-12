@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{title}}</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <!-- Theme before paint, so a dark preference never flashes light. -->
+    <script>
+      (() => {
+        let t = null;
+        try { t = localStorage.getItem("theme"); } catch {}
+        if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches))
+          document.documentElement.classList.add("dark");
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/iconoir-icons/iconoir@main/css/iconoir.css" />
+    <!--
+      Tailwind's play CDN: no build step, which is the whole reason the worker
+      can be deployed with `wrangler deploy` and nothing else. It costs a
+      third party script tag on a page that handles a password, so if that
+      trade stops being acceptable, compile a stylesheet and serve it from R2.
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Instrument Sans", "system-ui", "sans-serif"],
+              mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+            },
+            colors: {
+              seal: { DEFAULT: "#B42318", soft: "#FBE9E7", bright: "#F0705E" },
+              paper: { DEFAULT: "#F4F4F1", dark: "#121212" },
+              card: { DEFAULT: "#FFFFFF", dark: "#1B1B1B" },
+              line: { DEFAULT: "#E4E4DF", dark: "#2C2C2C" },
+            },
+          },
+        },
+      };
+    </script>
+    <style type="text/tailwindcss">
+      @layer base {
+        html { color-scheme: light; }
+        html.dark { color-scheme: dark; }
+        [class^="iconoir-"]::before, [class*=" iconoir-"]::before { vertical-align: -0.125em; }
+      }
+      @layer components {
+        .field {
+          @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-stone-900
+                 placeholder:text-stone-400 outline-none transition
+                 focus:border-seal focus:ring-2 focus:ring-seal/20
+                 dark:border-line-dark dark:bg-card-dark dark:text-stone-100 dark:placeholder:text-stone-600
+                 dark:focus:border-seal-bright dark:focus:ring-seal-bright/25;
+        }
+        .label { @apply mb-1.5 block text-sm text-stone-600 dark:text-stone-400; }
+        .btn {
+          @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium
+                 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-seal/40
+                 disabled:cursor-not-allowed disabled:opacity-40;
+        }
+        .btn-primary { @apply btn bg-seal text-white hover:bg-[#9a1d13] dark:bg-seal-bright dark:text-stone-950 dark:hover:bg-[#f48c7d]; }
+        .btn-quiet {
+          @apply btn border border-line bg-white text-stone-700 hover:border-stone-400
+                 dark:border-line-dark dark:bg-card-dark dark:text-stone-300 dark:hover:border-stone-500;
+        }
+        .btn-danger { @apply btn text-seal hover:bg-seal-soft dark:text-seal-bright dark:hover:bg-seal-bright/10; }
+        .card { @apply rounded-lg border border-line bg-card dark:border-line-dark dark:bg-card-dark; }
+        .chip { @apply inline-block rounded bg-stone-200/70 px-1.5 py-0.5 font-mono text-[11px] text-stone-700 dark:bg-stone-800 dark:text-stone-300; }
+        .icon-btn {
+          @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 transition
+                 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100;
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-full bg-paper font-sans text-stone-900 antialiased dark:bg-paper-dark dark:text-stone-100">
+    <header class="border-b border-line bg-card/80 backdrop-blur dark:border-line-dark dark:bg-card-dark/80">
+      <div class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
+        <a href="/" class="flex items-center gap-2.5 font-semibold tracking-tight">
+          <i class="iconoir-tower text-2xl text-seal dark:text-seal-bright"></i>
+          Herald
+        </a>
+        <nav class="flex items-center gap-1 text-sm text-stone-600 dark:text-stone-400">
+          {{{nav}}}
+          <button class="icon-btn" id="theme" type="button" title="Switch theme">
+            <i class="iconoir-sun-light hidden text-lg dark:inline"></i>
+            <i class="iconoir-half-moon text-lg dark:hidden"></i>
+          </button>
+        </nav>
+      </div>
+    </header>
+    <main class="mx-auto max-w-6xl px-5 py-8 sm:py-10">{{{body}}}</main>
+
+    <!-- One confirm dialog for the whole app. confirmDialog(title, body, action) resolves true on confirm. -->
+    <dialog id="confirm" class="w-[calc(100%-2rem)] max-w-sm rounded-xl border border-line bg-card p-0 text-stone-900 shadow-2xl
+                                backdrop:bg-stone-900/50 backdrop:backdrop-blur-sm dark:border-line-dark dark:bg-card-dark dark:text-stone-100">
+      <form method="dialog" class="p-5">
+        <div class="flex items-start gap-3">
+          <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-seal-soft text-seal dark:bg-seal-bright/15 dark:text-seal-bright">
+            <i class="iconoir-warning-circle text-lg"></i>
+          </span>
+          <div class="min-w-0">
+            <h2 class="font-semibold" id="confirm-title"></h2>
+            <p class="mt-1 text-sm text-stone-600 dark:text-stone-400" id="confirm-body"></p>
+          </div>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <button class="btn-quiet" value="cancel" autofocus>Cancel</button>
+          <button class="btn-primary" value="ok" id="confirm-ok"></button>
+        </div>
+      </form>
+    </dialog>
+    <style>
+      #confirm[open] { animation: confirm-in 120ms ease-out; }
+      @keyframes confirm-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
+      @media (prefers-reduced-motion: reduce) { #confirm[open] { animation: none; } }
+    </style>
+    <script>
+      window.confirmDialog = (title, body, action = "Delete") =>
+        new Promise((resolve) => {
+          const d = document.getElementById("confirm");
+          document.getElementById("confirm-title").textContent = title;
+          document.getElementById("confirm-body").textContent = body;
+          document.getElementById("confirm-ok").textContent = action;
+          d.returnValue = "";
+          d.onclose = () => resolve(d.returnValue === "ok");
+          // A click on the backdrop lands on the dialog itself, not the form.
+          // Braces matter: an onclick returning false would cancel the
+          // buttons' own submit, which is what closes the dialog.
+          d.onclick = (e) => {
+            if (e.target === d) d.close("cancel");
+          };
+          d.showModal();
+        });
+      document.querySelector('form[action="/logout"]')?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (await confirmDialog("Sign out?", "You will need the password to publish again.", "Sign out")) e.target.submit();
+      });
+      document.getElementById("theme").onclick = () => {
+        const dark = document.documentElement.classList.toggle("dark");
+        try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch {}
+      };
+      // Copy buttons anywhere on the page, including ones rendered later.
+      document.addEventListener("click", async (e) => {
+        const b = e.target.closest("button[data-copy]");
+        if (!b) return;
+        await navigator.clipboard.writeText(b.dataset.copy);
+        b.firstElementChild.className = "iconoir-check text-emerald-600";
+        setTimeout(() => (b.firstElementChild.className = "iconoir-copy"), 1200);
+      });
+    </script>
+  </body>
+</html>
