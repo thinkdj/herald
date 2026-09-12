@@ -1,0 +1,80 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "herald",
+  "main": "./worker.js",
+  "compatibility_date": "2026-08-30",
+
+  // No module rules needed: wrangler already treats **/*.html as a Text
+  // module, which is what lets templates stay real .html files that an editor
+  // can highlight, imported with `import layout from "./templates/layout.html"`.
+
+  // The top level is the local development target: `wrangler dev` uses it, it
+  // claims no custom domain, and its resources are the ones the local
+  // simulator creates. Real deploys always name an environment, because
+  // bindings are not inherited by environments and a bare `wrangler deploy`
+  // would otherwise publish with development resources attached.
+  "workers_dev": true,
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "herald-dev" }],
+  // Per client IP, per minute. Login is tight; admin and the write routes are
+  // loose enough for a CI job uploading a whole release at once.
+  "ratelimits": [
+    { "name": "LOGIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
+    { "name": "ADMIN_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "herald-dev",
+      // Placeholder so `wrangler dev --local` works out of the box. A local
+      // database is simulated, so this id is never resolved.
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+
+  "env": {
+    // Staging: a real deploy with its own database and bucket, so a release
+    // can be published and updated against end to end without touching what
+    // installed apps are polling.
+    "staging": {
+      "name": "herald-staging",
+      "workers_dev": true,
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "herald-staging" }],
+      // Per client IP, per minute. Login is tight; admin and the write routes are
+      // loose enough for a CI job uploading a whole release at once.
+      "ratelimits": [
+        { "name": "LOGIN_LIMIT", "namespace_id": "1011", "simple": { "limit": 5, "period": 60 } },
+        { "name": "ADMIN_LIMIT", "namespace_id": "1012", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "herald-staging",
+          "database_id": ""
+        }
+      ]
+    },
+
+    // Production. The host has to differ from the marketing site: the homepage
+    // worker claims ctx.think.dj and ctx.thinkdj.xyz as custom domains, and a
+    // host belongs to one worker.
+    "production": {
+      "name": "herald",
+      "workers_dev": false,
+      "routes": [{ "pattern": "herald.think.dj", "custom_domain": true }],
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "herald" }],
+      // Per client IP, per minute. Login is tight; admin and the write routes are
+      // loose enough for a CI job uploading a whole release at once.
+      "ratelimits": [
+        { "name": "LOGIN_LIMIT", "namespace_id": "1021", "simple": { "limit": 5, "period": 60 } },
+        { "name": "ADMIN_LIMIT", "namespace_id": "1022", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "herald",
+          "database_id": ""
+        }
+      ]
+    }
+  }
+}
