@@ -60,7 +60,7 @@
     "production": {
       "name": "herald",
       "workers_dev": false,
-      "routes": [{ "pattern": "herald.think.dj", "custom_domain": true }],
+      "routes": [{ "pattern": "herald.thinkdj.xyz", "custom_domain": true }],
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "herald" }],
       // Per client IP, per minute. Login is tight; admin and the write routes are
       // loose enough for a CI job uploading a whole release at once.

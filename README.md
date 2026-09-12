@@ -151,7 +151,7 @@ be published and installed end to end without touching what real apps poll.
 |--------|--------|---------------------|------|
 | top level | `herald` | `herald-dev`, simulated locally | `wrangler dev` only |
 | `--env staging` | `herald-staging` | `herald-staging` | `workers.dev` |
-| `--env production` | `herald` | `herald` | `herald.think.dj` |
+| `--env production` | `herald` | `herald` | `herald.thinkdj.xyz` |
 
 Bindings are **not** inherited by environments, so each one declares its own.
 That is also why every real deploy names an environment: a bare
@@ -220,7 +220,7 @@ Same thing with curl, and the only option when the artifacts are hosted
 elsewhere (a public repo's release assets, any static host):
 
 ```sh
-curl -X POST https://herald.think.dj/ctx/releases \
+curl -X POST https://herald.thinkdj.xyz/ctx/releases \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "content-type: application/json" \
   -d '{
@@ -248,7 +248,7 @@ To upload the bytes to Herald instead, `PUT` each file first and use the `url`
 it returns:
 
 ```sh
-curl -X PUT "https://herald.think.dj/ctx/upload/0.1.1/ctx_0.1.1_x64_en-US.msi" \
+curl -X PUT "https://herald.thinkdj.xyz/ctx/upload/0.1.1/ctx_0.1.1_x64_en-US.msi" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "x-herald-sha512: $(openssl dgst -sha512 -binary ctx.msi | base64)" \
   --data-binary @ctx_0.1.1_x64_en-US.msi
@@ -262,7 +262,7 @@ Tauri, in `src-tauri/tauri.conf.json`:
 "bundle": { "createUpdaterArtifacts": true },
 "plugins": {
   "updater": {
-    "endpoints": ["https://herald.think.dj/ctx/{{target}}/{{arch}}/{{current_version}}"],
+    "endpoints": ["https://herald.thinkdj.xyz/ctx/{{target}}/{{arch}}/{{current_version}}"],
     "pubkey": "PASTE THE PUBLIC KEY"
   }
 }
@@ -278,7 +278,7 @@ Electron, in `package.json` or `electron-builder.yml`:
 ```yaml
 publish:
   provider: generic
-  url: https://herald.think.dj/myapp
+  url: https://herald.thinkdj.xyz/myapp
 ```
 
 ## Site download buttons
@@ -286,8 +286,8 @@ publish:
 Link straight at Herald and never touch the markup again on a release:
 
 ```html
-<a href="https://herald.think.dj/ctx/download/windows">Download for Windows</a>
-<a href="https://herald.think.dj/ctx/download/macos">Download for macOS</a>
+<a href="https://herald.thinkdj.xyz/ctx/download/windows">Download for Windows</a>
+<a href="https://herald.thinkdj.xyz/ctx/download/macos">Download for macOS</a>
 ```
 
 ## Tests
