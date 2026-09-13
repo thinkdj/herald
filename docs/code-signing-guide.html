@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shipping a Tauri App: Code Signing &amp; Release Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #f7f6f3;
+    --bg-surface: #efeee9;
+    --bg-inset: #e6e4dd;
+    --text: #1a1917;
+    --text-muted: #6b6860;
+    --accent: #2d6a4f;
+    --accent-light: #d4e8dc;
+    --border: #d5d3cc;
+    --cost-tag: #b45309;
+    --cost-tag-bg: #fef3c7;
+    --required-bg: #dcfce7;
+    --required-text: #166534;
+    --optional-bg: #e0e7ff;
+    --optional-text: #3730a3;
+    --red: #dc2626;
+    --red-bg: #fef2f2;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-inline: 24px;
+    padding-block: 40px 80px;
+    max-width: 820px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3 { text-wrap: balance; }
+
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0 0 40px;
+  }
+
+  .status-bar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+    padding: 16px;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-green { background: var(--accent); }
+  .dot-amber { background: var(--cost-tag); }
+  .dot-red { background: var(--red); }
+
+  h2 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 48px 0 6px;
+    padding-top: 24px;
+    border-top: 2px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+
+  h2:first-of-type { margin-top: 0; border-top: none; padding-top: 0; }
+
+  .section-note {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin: 0 0 20px;
+  }
+
+  h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 28px 0 8px;
+  }
+
+  p { margin: 0 0 12px; font-size: 0.9rem; }
+
+  .cost-tag {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--cost-tag-bg);
+    color: var(--cost-tag);
+    vertical-align: middle;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    vertical-align: middle;
+  }
+  .badge-required { background: var(--required-bg); color: var(--required-text); }
+  .badge-optional { background: var(--optional-bg); color: var(--optional-text); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin: 12px 0 20px;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+  }
+
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  td:last-child { font-size: 0.78rem; color: var(--text-muted); }
+
+  .table-wrap { overflow-x: auto; }
+
+  .highlight-row td {
+    background: var(--accent-light);
+    font-weight: 500;
+  }
+
+  .callout {
+    padding: 14px 16px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    margin: 16px 0;
+    border-left: 3px solid;
+  }
+
+  .callout-warn {
+    background: var(--cost-tag-bg);
+    border-color: var(--cost-tag);
+    color: var(--text);
+  }
+
+  .callout-info {
+    background: var(--accent-light);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .callout-red {
+    background: var(--red-bg);
+    border-color: var(--red);
+    color: var(--text);
+  }
+
+  .callout strong { font-weight: 600; }
+
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8em;
+    background: var(--bg-inset);
+    padding: 2px 5px;
+    border-radius: 3px;
+  }
+
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0;
+  }
+
+  .checklist li {
+    padding: 8px 0 8px 28px;
+    position: relative;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 10px;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-radius: 3px;
+  }
+
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 16px;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin: 20px 0;
+  }
+
+  .total-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .total-amount {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .total-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .timeline {
+    padding: 0 0 0 20px;
+    margin: 16px 0;
+    border-left: 2px solid var(--border);
+    list-style: none;
+  }
+
+  .timeline li {
+    padding: 0 0 20px;
+    position: relative;
+    font-size: 0.85rem;
+  }
+
+  .timeline li::before {
+    content: '';
+    position: absolute;
+    left: -25px; top: 4px;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  .timeline li:last-child { padding-bottom: 0; }
+
+  .step-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 600px) {
+    .two-col { grid-template-columns: 1fr; }
+    body { padding-inline: 16px; }
+    h1 { font-size: 1.4rem; }
+    .status-bar { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Shipping a Tauri App to Production</h1>
+<p class="subtitle">Code signing, automated builds &amp; releases for indie developers &middot; 2026</p>
+
+<div class="status-bar">
+  <div class="status-item"><span class="status-dot dot-green"></span> Tauri 2 builds on 3 platforms</div>
+  <div class="status-item"><span class="status-dot dot-amber"></span> Code signing needed</div>
+  <div class="status-item"><span class="status-dot dot-amber"></span> Updater keypair needed</div>
+</div>
+
+<h2>What It Costs</h2>
+<p class="section-note">Annual recurring. All prices USD. Researched September 2026.</p>
+
+<div class="total-row">
+  <div>
+    <div class="total-label">Minimum annual cost</div>
+    <div class="total-sub">Apple + cheapest Windows cert with cloud signing</div>
+  </div>
+  <div style="text-align:right">
+    <div class="total-amount">~$305/yr</div>
+    <div class="total-sub">$120/yr if eligible for Azure Trusted Signing</div>
+  </div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Item</th><th>Cost</th><th>Required?</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Apple Developer Program</strong></td>
+      <td><span class="cost-tag">$99/yr</span></td>
+      <td><span class="badge badge-required">Required</span></td>
+      <td>Code signing + notarization for macOS. Without it, Gatekeeper blocks your app entirely.</td>
+    </tr>
+    <tr>
+      <td><strong>Windows code signing cert</strong></td>
+      <td><span class="cost-tag">$120–$460/yr</span></td>
+      <td><span class="badge badge-required">Required</span></td>
+      <td>Range depends on provider and whether cloud signing is included. See comparison below.</td>
+    </tr>
+    <tr>
+      <td><strong>Linux signing</strong></td>
+      <td><span class="cost-tag">$0</span></td>
+      <td><span class="badge badge-optional">Optional</span></td>
+      <td>GPG-sign your AppImage. No gatekeeper, no paid cert needed.</td>
+    </tr>
+    <tr>
+      <td><strong>GitHub Actions CI</strong></td>
+      <td><span class="cost-tag">$0</span></td>
+      <td><span class="badge badge-required">Required</span></td>
+      <td>Free for public repos. Private repos get 2,000 min/mo on free tier.</td>
+    </tr>
+    <tr>
+      <td><strong>Tauri updater signing</strong></td>
+      <td><span class="cost-tag">$0</span></td>
+      <td><span class="badge badge-required">Required</span></td>
+      <td>Minisign keypair via <code>tauri signer generate</code>. Separate from OS code signing certs.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+<h2>Windows Code Signing</h2>
+<p class="section-note">The landscape changed dramatically in 2024. Do not overpay for EV.</p>
+
+<div class="callout callout-red">
+  <strong>Key change (2024):</strong> EV certificates no longer bypass SmartScreen. Both OV and EV now go through the same reputation-building process. Paying extra for EV solely for SmartScreen is no longer justified.
+</div>
+
+<div class="callout callout-warn">
+  <strong>Hardware mandate (June 2023):</strong> CAs can no longer issue OV/EV certs as exportable .pfx files. All new certs must live on HSMs or cloud HSM equivalents (Azure Key Vault, SSL.com eSigner, etc.).<br>
+  <strong>Feb 2026:</strong> Max cert validity capped at ~15 months (458 days).
+</div>
+
+<h3>Provider Comparison: Individual Developers</h3>
+<p class="section-note">Sorted by total annual cost including cloud signing (needed for CI/CD).</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Provider</th><th>Type</th><th>Cert/yr</th><th>Cloud signing</th><th>Total/yr</th><th>Eligibility</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Azure Trusted Signing</strong></td>
+      <td>Managed</td>
+      <td><span class="cost-tag">$120</span></td>
+      <td>Included</td>
+      <td><span class="cost-tag">$120</span></td>
+      <td>US/CA/EU/UK entities only (self-employed accepted since 2025)</td>
+    </tr>
+    <tr>
+      <td><strong>Certum OSS</strong></td>
+      <td>OV</td>
+      <td><span class="cost-tag">~$49</span></td>
+      <td>Included (SimplySign)</td>
+      <td><span class="cost-tag">~$49</span></td>
+      <td>Open-source projects only. Shows "Open Source Developer" as publisher. <strong>Cannot sign commercial software</strong>; cert revoked if found.</td>
+    </tr>
+    <tr class="highlight-row">
+      <td><strong>Certum Cloud CODE Individual</strong></td>
+      <td>OV (individual)</td>
+      <td><span class="cost-tag">€189 (~$205)</span></td>
+      <td>Included (SimplySign)</td>
+      <td><span class="cost-tag">~$205</span></td>
+      <td>Individuals worldwide. No business entity needed. Works for commercial software.</td>
+    </tr>
+    <tr>
+      <td><strong>Sectigo/Comodo Individual + Google Cloud KMS</strong></td>
+      <td>OV</td>
+      <td><span class="cost-tag">~$211</span></td>
+      <td>~$30/yr (GCP KMS)</td>
+      <td><span class="cost-tag">~$241</span></td>
+      <td>Individuals worldwide. You host the key on Google Cloud KMS (~$2.50/mo). Well-documented GitHub Actions setup.</td>
+    </tr>
+    <tr>
+      <td><strong>Sectigo/Comodo Individual + USB token</strong></td>
+      <td>OV</td>
+      <td><span class="cost-tag">~$216</span></td>
+      <td>-</td>
+      <td><span class="cost-tag">~$216</span></td>
+      <td>Individuals worldwide. Ships hardware token. <strong>No automated CI signing</strong>; must sign locally.</td>
+    </tr>
+    <tr>
+      <td><strong>SSL.com IV + eSigner</strong></td>
+      <td>IV (individual)</td>
+      <td><span class="cost-tag">~$219</span></td>
+      <td>$240/yr (eSigner)</td>
+      <td><span class="cost-tag">~$459</span></td>
+      <td>Individuals worldwide. Cloud signing via eSigner adds ~$20/mo. Overkill for solo devs.</td>
+    </tr>
+    <tr>
+      <td><strong>Sectigo EV</strong></td>
+      <td>EV</td>
+      <td><span class="cost-tag">~$296</span></td>
+      <td>Varies</td>
+      <td><span class="cost-tag">$296+</span></td>
+      <td>Requires registered organization. No SmartScreen advantage anymore.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout callout-info">
+  <strong>If you're in the US/CA/EU/UK:</strong> Azure Trusted Signing at $9.99/mo ($120/yr) is the best deal: no hardware token, native CI/CD support, Microsoft-managed HSM.<br><br>
+  <strong>Everyone else:</strong> <strong>Certum Cloud CODE Individual</strong> at €189/yr (~$205) is the cheapest all-in option. Cloud signing is included: no extra fees, no GCP account to manage. Available to individuals worldwide.
+</div>
+
+<h3>Hardware Token vs Cloud Signing: Why It Matters for CI/CD</h3>
+<p>Since June 2023, all new code signing certs must live on HSMs. For automated CI/CD builds, you need <strong>cloud-based signing</strong> because a physical USB token can't plug into a GitHub Actions runner. Certum's SimplySign and SSL.com's eSigner both offer API-based signing that works in CI. If you go with a reseller that ships a physical token, you'd need to sign locally after downloading CI artifacts. Doable, but clunky.</p>
+
+<h3>Individual vs Organization Certs</h3>
+<p>Individual certs (OV Individual or IV) show <strong>your legal name</strong> as the publisher, not a brand or trade name. If you want a company name as publisher, you need an OV organization cert, which requires a registered business entity. The cert itself can be cheaper (~$116/yr from Certum), but the business registration overhead is the real cost.</p>
+
+<h3>SmartScreen Reputation</h3>
+<p>With <em>any</em> cert type, first-time users will see "Windows protected your PC." Reputation builds organically as users download and run the app. There is no shortcut; you just need real download volume. Signing is still essential: unsigned apps get a much harsher dialog that most users won't click through.</p>
+
+
+<h2>macOS Signing &amp; Notarization</h2>
+<p class="section-note">Straightforward: one $99/yr membership covers everything.</p>
+
+<ul class="checklist">
+  <li><strong>Apple Developer Program:</strong> $99/yr. Gives you Developer ID certificates (for distribution outside App Store) and free, unlimited notarization.</li>
+  <li><strong>Notarization:</strong> Apple scans your app for malware and stamps it. Without this, Gatekeeper blocks your DMG. Process is automated in CI.</li>
+  <li><strong>Universal binary:</strong> Tauri can build both <code>aarch64-apple-darwin</code> (Apple Silicon) and <code>x86_64-apple-darwin</code> (Intel) targets.</li>
+  <li><strong>You don't need a Mac to sign:</strong> the GitHub Actions macOS runner handles signing + notarization in CI. You just need the cert + credentials as GitHub Secrets.</li>
+</ul>
+
+<p>Tauri's CI integration passes Apple cert + notarization credentials as environment variables. The <code>tauri-apps/tauri-action</code> handles the rest.</p>
+
+
+<h2>Linux Distribution</h2>
+<p class="section-note">No paid certificates. No gatekeeper. The easiest platform.</p>
+
+<p>Build on <code>ubuntu-22.04</code> to keep the glibc floor low. Tauri produces AppImage and .deb by default.</p>
+
+<div class="two-col">
+  <div>
+    <h3>What to ship</h3>
+    <p><strong>AppImage:</strong> portable, runs on most distros without install. Optional GPG signing (free, your own key).</p>
+    <p><strong>.deb:</strong> for Debian/Ubuntu users who prefer <code>apt</code>.</p>
+  </div>
+  <div>
+    <h3>What to skip (for now)</h3>
+    <p><strong>Flatpak/Snap:</strong> adds store review overhead. Add when users ask.</p>
+    <p><strong>.rpm:</strong> add when Fedora/RHEL users appear.</p>
+  </div>
+</div>
+
+
+<h2>Automated Build &amp; Release</h2>
+<p class="section-note">GitHub Actions + <code>tauri-apps/tauri-action</code> handles the heavy lifting.</p>
+
+<h3>What to set up</h3>
+<ol class="checklist">
+  <li>A <strong>release workflow</strong> triggered by tag push (<code>v*</code>) that builds on all three platforms via matrix strategy using <code>tauri-apps/tauri-action</code></li>
+  <li>Inject <strong>Apple signing secrets</strong> into macOS build job: <code>APPLE_CERTIFICATE</code>, <code>APPLE_CERTIFICATE_PASSWORD</code>, <code>APPLE_ID</code>, <code>APPLE_PASSWORD</code>, <code>APPLE_TEAM_ID</code></li>
+  <li>Inject <strong>Windows signing</strong> into Windows build job: cloud signing API credentials (Certum SimplySign, Azure Trusted Signing, or signtool + cloud HSM)</li>
+  <li>Generate <strong>Tauri updater keypair</strong> with <code>tauri signer generate</code> and set the public key in <code>tauri.conf.json</code></li>
+  <li>Store the <strong>updater private key</strong> as <code>TAURI_SIGNING_PRIVATE_KEY</code> and password as <code>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</code> in GitHub Secrets</li>
+  <li>Wire your <strong>update feed</strong> (GitHub Releases JSON, or a custom updater server) to serve <code>latest.json</code> for the Tauri auto-updater</li>
+</ol>
+
+
+<h2>Updater Signing</h2>
+<p class="section-note">Separate from OS code signing. Tauri verifies updates with its own keypair.</p>
+
+<p>Tauri's updater plugin uses <strong>minisign</strong>, a lightweight signature scheme. The flow:</p>
+
+<ul class="timeline">
+  <li>
+    <span class="step-label">Generate</span>
+    Run <code>tauri signer generate -w ~/.tauri/myapp.key</code> locally. Save the password. This creates a keypair.
+  </li>
+  <li>
+    <span class="step-label">Configure</span>
+    Paste the <strong>public key</strong> into <code>tauri.conf.json</code> → <code>plugins.updater.pubkey</code>.
+  </li>
+  <li>
+    <span class="step-label">CI Secret</span>
+    Store the <strong>private key</strong> as <code>TAURI_SIGNING_PRIVATE_KEY</code> and the password as <code>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</code> in GitHub Secrets.
+  </li>
+  <li>
+    <span class="step-label">Build</span>
+    <code>tauri-action</code> automatically signs update bundles (.sig files alongside each artifact) when these env vars are present.
+  </li>
+  <li>
+    <span class="step-label">Verify</span>
+    The app checks signatures against the embedded public key before applying any update.
+  </li>
+</ul>
+
+
+<h2>Implementation Order</h2>
+<p class="section-note">Do this in order. Each step is independently shippable.</p>
+
+<ul class="timeline">
+  <li>
+    <span class="step-label">Week 1: Updater keypair</span>
+    Generate minisign key, set pubkey in tauri.conf.json, add secrets to GitHub. Zero cost, unblocks signed updates.
+  </li>
+  <li>
+    <span class="step-label">Week 1: Apple Developer Program</span>
+    Enroll at developer.apple.com ($99). Takes 24–48 hrs to process. Export cert, add to GitHub Secrets.
+  </li>
+  <li>
+    <span class="step-label">Week 2: macOS signing in CI</span>
+    Add Apple env vars to your release workflow's macOS job. Test a tag push. macOS builds now signed + notarized.
+  </li>
+  <li>
+    <span class="step-label">Week 2-3: Windows signing</span>
+    Sign up for your chosen cert provider. Identity verification takes a few days. Configure cloud signing in your release workflow's Windows job.
+  </li>
+  <li>
+    <span class="step-label">Week 3: Update feed</span>
+    Wire your updater endpoint to serve signed artifacts + latest.json after each release.
+  </li>
+  <li>
+    <span class="step-label">Week 4: First signed release</span>
+    Tag <code>v1.0.0</code>. All three platforms build, sign, upload. Auto-updater serves the feed. Ship it.
+  </li>
+</ul>
+
+<div class="callout callout-info">
+  <strong>The short version:</strong> ~$305/yr (or $120/yr if eligible for Azure Trusted Signing) gets you signed builds on all platforms with automated CI/CD. Most of the work is injecting signing credentials into your GitHub Actions workflow and generating a Tauri updater keypair.
+</div>
+
+<h2>Sources</h2>
+<p class="section-note">Prices and availability verified September 2026.</p>
+<ul style="font-size:0.82rem; padding-left:20px;">
+  <li><a href="https://www.sslmentor.com/certum/certumcodecloudindividual" style="color:var(--accent)">Certum Cloud CODE Individual</a>: €189/yr cloud signing for individuals</li>
+  <li><a href="https://www.ssl.com/products/software-integrity/code-signing/iv/" style="color:var(--accent)">SSL.com IV Code Signing</a>: individual-validated certs</li>
+  <li><a href="https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options" style="color:var(--accent)">Microsoft code signing options</a>: Azure Trusted Signing eligibility</li>
+  <li><a href="https://certum.store/open-source-code-signing-code.html" style="color:var(--accent)">Certum OSS program</a>: restrictions on commercial use</li>
+  <li><a href="https://developer.apple.com/programs/" style="color:var(--accent)">Apple Developer Program</a>: $99/yr</li>
+  <li><a href="https://signmycode.com/individual-code-signing" style="color:var(--accent)">SignMyCode individual certs</a>: Sectigo/Comodo reseller pricing</li>
+  <li><a href="https://dev.to/katz/building-a-cost-effective-windows-code-signing-pipeline-sectigo-google-cloud-kms-on-github-2ghf" style="color:var(--accent)">Sectigo + Google Cloud KMS guide</a>: CI/CD pipeline walkthrough</li>
+  <li><a href="https://v2.tauri.app/distribute/sign/windows/" style="color:var(--accent)">Tauri v2 Windows signing docs</a></li>
+  <li><a href="https://dev.to/tomtomdu73/ship-your-tauri-v2-app-like-a-pro-code-signing-for-macos-and-windows-part-12-3o9n" style="color:var(--accent)">Ship Tauri v2 like a pro</a>: signing + CI guide</li>
+  <li><a href="https://comparecheapssl.com/cheap-code-signing-certificate-providers/" style="color:var(--accent)">CompareCheapSSL</a>: certificate price comparison</li>
+</ul>
+
+</body>
+</html>
