@@ -298,8 +298,10 @@ async function publish(env, slug, req) {
   }
   const version = normalizeVersion(body.version);
   if (!version) return json({ error: "version must be semver, for example 1.2.3" }, 400, 0);
-  const pubDate = normalizeDate(body.pub_date);
-  if (!pubDate) return json({ error: "pub_date must be a parseable date" }, 400, 0);
+  // Left out, the date is decided by the database: now for a new release,
+  // unchanged for one that exists.
+  const pubDate = body.pub_date == null ? null : normalizeDate(body.pub_date);
+  if (body.pub_date != null && !pubDate) return json({ error: "pub_date must be a parseable date" }, 400, 0);
 
   const artifacts = Object.entries(body.artifacts ?? {});
   // A publish is one D1 batch, so the statement count stays bounded.

@@ -115,8 +115,11 @@ password or a bearer token is throttled either way.
 
 ## Behaviour worth knowing
 
-- Latest means the newest `pub_date`, so republishing an older version with a
-  fresh date is how you roll back.
+- Latest means the newest `pub_date`. A release keeps the date it was first
+  published with: adding a platform or editing the notes later does not re-date
+  it, so touching an old version cannot make it latest by accident. To roll
+  back, unpublish the bad release, or republish the older one with an explicit
+  `pub_date`.
 - `pub_date` is normalized to UTC before it is stored, because latest is picked
   by a text comparison and a mix of `Z` and `+05:30` would sort wrong.
 - A leading `v` is stripped from the version and `0.1` is stored as `0.1.0`.
