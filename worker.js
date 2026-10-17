@@ -121,7 +121,13 @@ const navFor = (signedIn, demoMode) =>
     : "";
 
 const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-between border-b border-amber-200 bg-amber-100 px-5 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/15 dark:text-amber-200">
-  <span class="inline-flex items-center gap-1.5"><i class="iconoir-info-circle text-base"></i>In Demo Mode</span>
+  <span class="inline-flex items-center gap-2">
+    <span class="inline-flex items-center gap-1.5"><i class="iconoir-info-circle text-base"></i>In Demo Mode</span>
+    <span class="text-amber-900/40 dark:text-amber-200/40">|</span>
+    <a class="font-medium hover:underline" href="/">Home</a>
+    <span class="text-amber-900/40 dark:text-amber-200/40">|</span>
+    <a class="font-medium hover:underline" href="/admin">Admin</a>
+  </span>
   <a class="font-medium hover:underline" href="/logout">Exit</a>
 </div>`;
 
