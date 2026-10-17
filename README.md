@@ -66,6 +66,7 @@ scripts, the two stylesheet hosts, and nothing else, and that forbids framing.
 |-------|--------------|
 | `GET /` | App index. `?format=json` for the same data. Unlisted apps are left out |
 | `GET /:slug` | One app: its links and every release with notes. Works for unlisted apps too |
+| `GET /about` | What Herald is, in a page |
 | `GET /login`, `POST /login`, `POST /logout` | Sign in with `ADMIN_USER` and `ADMIN_PASSWORD` |
 | `GET /demo` | A sandbox session over `demo/*.json`. Only when the `DEMO` var is set |
 | `GET /admin` | Publishing UI: pick an app, pick or add a version, drop builds. Redirects to `/login` without a session |
@@ -152,7 +153,7 @@ password or a bearer token is throttled either way.
 - Deleting a release removes its rows, not its R2 objects. That is deliberate:
   installed clients hold signed URLs pointing at them. Prune the bucket by hand
   when you are sure nothing is still on them.
-- `files`, `admin`, `login` and `logout` are reserved and cannot be app slugs.
+- `files`, `admin`, `login`, `logout`, `demo` and `about` are reserved and cannot be app slugs.
 - An unlisted app is off the home page and its JSON, nothing more. Its page,
   feeds and downloads answer to anyone with the slug. A deterrent for a
   private build, not access control.

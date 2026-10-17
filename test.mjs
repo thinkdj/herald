@@ -137,7 +137,7 @@ assert.equal(render("{{missing}}", {}), "{{missing}}", "an unknown key is left a
 assert.equal(render("`${x}` and {{y}}", { y: "1" }), "`${x}` and 1");
 assert.equal(esc(`<&">'`), "&lt;&amp;&quot;&gt;&#39;");
 
-for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "login.html", "admin.html"]) {
+for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "login.html", "admin.html", "about.html"]) {
   const body = tpl(name);
   assert.ok(body.length > 0, `${name} must not be empty`);
   // Every placeholder the templates use must be one a route actually supplies.

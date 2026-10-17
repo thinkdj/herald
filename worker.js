@@ -3,6 +3,7 @@
 // shape projected into whatever dialect each updater speaks.
 //
 //   GET    /                                 app index, ?format=json for JSON
+//   GET    /about                            what Herald is
 //   GET    /login, POST /login, POST /logout sign in with ADMIN_USER and ADMIN_PASSWORD
 //   GET    /demo                             a sandbox session over demo/*.json, when DEMO is set
 //   GET    /admin                            publishing UI, requires a session
@@ -54,6 +55,7 @@ import appCardTpl from "./templates/app-card.html";
 import loginTpl from "./templates/login.html";
 import adminTpl from "./templates/admin.html";
 import appTpl from "./templates/app.html";
+import aboutTpl from "./templates/about.html";
 // Tailwind's play build, as a text module for the same reason the templates
 // are: wrangler bundles .txt as text with no rule to add.
 import tailwind from "./vendor/tailwind-3.4.17.txt";
@@ -66,7 +68,7 @@ const db = Object.fromEntries(
 );
 
 // Path prefixes Herald owns, so none of them can also be an app slug.
-const RESERVED = new Set(["files", "admin", "login", "logout", "demo", "favicon.ico", "robots.txt"]);
+const RESERVED = new Set(["files", "admin", "login", "logout", "demo", "about", "favicon.ico", "robots.txt"]);
 
 // Checked once for every write, not per route. Upload and publish both turn a
 // slug into a durable name, an R2 key prefix and a database row, and letting
@@ -113,12 +115,13 @@ const navLink = (href, icon, label) =>
 // In demo mode the bar above the header carries the exit, so the nav keeps
 // only the Publish link.
 const navFor = (signedIn, demoMode) =>
-  signedIn
+  navLink("/about", "iconoir-info-circle", "About") +
+  (signedIn
     ? navLink("/admin", "iconoir-upload", "Publish") +
       (demoMode
         ? ""
         : `<form method="post" action="/logout"><button class="icon-btn" title="Sign out"><i class="iconoir-log-out text-lg"></i></button></form>`)
-    : "";
+    : "");
 
 const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-between border-b border-amber-200 bg-amber-100 px-5 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/15 dark:text-amber-200">
   <span class="inline-flex items-center gap-2">
@@ -424,6 +427,10 @@ export default {
     if (seg[0] === "files") {
       if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
       return serveFile(req, env, seg.slice(1).join("/"));
+    }
+    if (seg[0] === "about" && seg.length === 1) {
+      if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
+      return page(layout, aboutTpl, { title: "About Herald", ...(await ui()), cache: "public, max-age=3600" });
     }
     if (seg[0] === "login" && seg.length === 1 && (method === "GET" || method === "POST")) {
       return login(req, env, url, chrome(false, demoMode));

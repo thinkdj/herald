@@ -1,0 +1,76 @@
+<section class="mx-auto max-w-3xl">
+  <div class="flex flex-col items-start gap-6 py-6 sm:flex-row sm:items-center sm:gap-10 sm:py-10">
+    <svg class="h-28 w-28 shrink-0 text-seal dark:text-seal-bright sm:h-36 sm:w-36" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+      <path d="M12 46 H52 V56 H12 Z" fill-opacity="0.78"/>
+      <path d="M16 8 H24 V13 H28 V8 H36 V13 H40 V8 H48 V20 H45 L46.5 46 H17.5 L19 20 H16 Z"/>
+    </svg>
+    <div>
+      <p class="font-mono text-xs uppercase tracking-[0.2em] text-stone-500">About</p>
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Herald tells your app that a new version is out.</h1>
+      <p class="mt-4 max-w-xl text-base leading-relaxed text-stone-600 dark:text-stone-400">
+        A small release server for desktop apps. You drop a build here. Every copy of the app already
+        installed asks Herald for the latest version, hears about it, and updates itself.
+      </p>
+    </div>
+  </div>
+
+  <ol class="mt-8 grid gap-px overflow-hidden rounded-lg border border-line bg-line dark:border-line-dark dark:bg-line-dark sm:grid-cols-3">
+    <li class="bg-card p-5 dark:bg-card-dark">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-seal-soft font-mono text-sm font-medium text-seal dark:bg-seal-bright/15 dark:text-seal-bright">1</span>
+        <h2 class="font-semibold">Publish</h2>
+      </div>
+      <p class="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+        Sign in, pick an app, drop the installers and their signature files. Each platform lands under one
+        version number, from one machine or several.
+      </p>
+    </li>
+    <li class="bg-card p-5 dark:bg-card-dark">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-seal-soft font-mono text-sm font-medium text-seal dark:bg-seal-bright/15 dark:text-seal-bright">2</span>
+        <h2 class="font-semibold">Announce</h2>
+      </div>
+      <p class="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+        Herald turns that into the feed each updater expects: Tauri's <span class="font-mono text-xs">latest.json</span>
+        and electron-updater's <span class="font-mono text-xs">latest.yml</span>, plus a plain download link per platform.
+      </p>
+    </li>
+    <li class="bg-card p-5 dark:bg-card-dark">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-seal-soft font-mono text-sm font-medium text-seal dark:bg-seal-bright/15 dark:text-seal-bright">3</span>
+        <h2 class="font-semibold">Update</h2>
+      </div>
+      <p class="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+        Installed apps check the feed, verify the signature, and install. Anyone else can read the same
+        page as a changelog, or grab the installer directly.
+      </p>
+    </li>
+  </ol>
+
+  <div class="mt-12 grid gap-10 sm:grid-cols-2">
+    <div>
+      <h2 class="text-sm font-semibold text-stone-600 dark:text-stone-400">What it is</h2>
+      <ul class="mt-3 space-y-3 text-sm leading-relaxed">
+        <li class="flex gap-3"><i class="iconoir-cloud mt-0.5 shrink-0 text-base text-seal dark:text-seal-bright"></i><span>One Cloudflare Worker with a database and a bucket. Nothing else to run, nothing to patch.</span></li>
+        <li class="flex gap-3"><i class="iconoir-community mt-0.5 shrink-0 text-base text-seal dark:text-seal-bright"></i><span>Any number of apps, each under its own short name, each with its own feeds and page.</span></li>
+        <li class="flex gap-3"><i class="iconoir-shield-check mt-0.5 shrink-0 text-base text-seal dark:text-seal-bright"></i><span>Signatures travel with the build. The updater checks them; Herald never sees a private key.</span></li>
+        <li class="flex gap-3"><i class="iconoir-terminal mt-0.5 shrink-0 text-base text-seal dark:text-seal-bright"></i><span>A browser for people, a token for CI. Both publish the same way.</span></li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="text-sm font-semibold text-stone-600 dark:text-stone-400">What it is not</h2>
+      <ul class="mt-3 space-y-3 text-sm leading-relaxed">
+        <li class="flex gap-3"><i class="iconoir-xmark-circle mt-0.5 shrink-0 text-base text-stone-400"></i><span>Not a store. No accounts for users, no reviews, no analytics on who downloaded what.</span></li>
+        <li class="flex gap-3"><i class="iconoir-xmark-circle mt-0.5 shrink-0 text-base text-stone-400"></i><span>Not an SDK. Apps keep the updater they already ship with and only change one URL.</span></li>
+        <li class="flex gap-3"><i class="iconoir-xmark-circle mt-0.5 shrink-0 text-base text-stone-400"></i><span>Not a build system. It hosts what you give it and says nothing until you publish.</span></li>
+        <li class="flex gap-3"><i class="iconoir-xmark-circle mt-0.5 shrink-0 text-base text-stone-400"></i><span>Not shared. One operator, one password, and the pages run no third party script.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mt-12 flex flex-wrap items-center gap-3 border-t border-line pt-8 dark:border-line-dark">
+    <a class="btn-primary" href="/"><i class="iconoir-package"></i>See the apps</a>
+    <a class="btn-quiet" href="/login"><i class="iconoir-upload"></i>Publish a release</a>
+    <p class="ml-auto text-xs text-stone-500">A herald is the one who reads the announcement from the tower. That is the whole job.</p>
+  </div>
+</section>
