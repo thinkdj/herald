@@ -164,6 +164,10 @@ for (const id of ["apps", "new-app", "app-form", "app-slug", "app-name", "main",
   assert.ok(admin.includes(`id="${id}"`), `the admin page must have #${id}`);
 }
 assert.ok(tpl("login.html").includes('name="password"'), "the login form must post a password");
+// The panel is rebuilt on every queue change, so what the user typed has to
+// come back from state, never from the markup that was just thrown away.
+assert.ok(admin.includes("semver(S.ver)") && admin.includes("notes: S.notes"), "publish reads the version and notes from state");
+assert.ok(admin.includes('value="${esc(S.ver)}"') && admin.includes("{esc(S.notes)}"), "the admin page renders ver and notes from state");
 // The layout wraps the login and publishing pages, so every script it loads
 // has to come from Herald itself, and every outside stylesheet that can be
 // pinned to a hash has to be.

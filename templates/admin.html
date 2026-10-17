@@ -8,8 +8,7 @@
       <input class="field font-mono" id="app-slug" placeholder="slug, for example ctx" pattern="[a-z0-9][a-z0-9-]{0,62}" required />
       <input class="field" id="app-name" placeholder="Display name" required />
       <label class="flex items-center gap-2 text-sm text-stone-600 dark:text-stone-400">
-        <input type="checkbox" id="app-unlisted" class="accent-seal" /> Unlisted
-        <span class="text-xs text-stone-400" title="Kept off the home page. Its own page, feeds and downloads still work.">(off the home page)</span>
+        <input type="checkbox" id="app-listed" class="accent-seal" checked /> Show on home listing
       </label>
       <div class="flex gap-2">
         <button class="btn-primary flex-1" type="submit">Create app</button>
@@ -67,7 +66,7 @@
 
   // ------------------------------------------------------------------ state
 
-  const S = { apps: boot.apps, slug: null, versions: [], version: null, release: null, queue: [], busy: false, note: "" };
+  const S = { apps: boot.apps, slug: null, versions: [], version: null, release: null, queue: [], busy: false, note: "", ver: "", notes: "" };
 
   async function loadApps() {
     S.apps = (await api("GET", "/admin?format=json")).apps;
@@ -84,6 +83,8 @@
     S.version = v;
     S.release = v === "new" ? null : await api("GET", `/${S.slug}/releases/${v}`);
     S.note = "";
+    S.ver = "";
+    S.notes = S.release?.notes ?? "";
     location.hash = S.slug ? `${S.slug}/${v}` : "";
     renderMain();
   }
@@ -114,7 +115,7 @@
     e.preventDefault();
     const slug = $("app-slug").value.trim();
     try {
-      await api("PUT", `/${slug}`, { name: $("app-name").value.trim() || slug, unlisted: $("app-unlisted").checked });
+      await api("PUT", `/${slug}`, { name: $("app-name").value.trim() || slug, unlisted: !$("app-listed").checked });
       $("app-form").hidden = true;
       $("app-form").reset();
       await loadApps();
@@ -177,8 +178,8 @@
           <p class="mt-1 font-mono text-sm text-stone-500">${esc(app.slug)}</p>
         </div>
         <div class="flex items-center gap-3">
-          <label class="flex cursor-pointer items-center gap-2 text-sm text-stone-600 dark:text-stone-400" title="Kept off the home page. Its own page, feeds and downloads still work.">
-            <input type="checkbox" id="unlisted" class="accent-seal" ${app.unlisted ? "checked" : ""} /> Unlisted
+          <label class="flex cursor-pointer items-center gap-2 text-sm text-stone-600 dark:text-stone-400" title="Off keeps it off the home page. Its own page, feeds and downloads still work.">
+            <input type="checkbox" id="listed" class="accent-seal" ${app.unlisted ? "" : "checked"} /> Show on home listing
           </label>
           <button class="btn-danger" id="del-app" type="button"><i class="iconoir-trash"></i>Delete app</button>
         </div>
@@ -207,7 +208,8 @@
           ${
             isNew
               ? `<div class="flex items-center gap-3"><label class="text-sm text-stone-600 dark:text-stone-400" for="ver">Version</label>
-                 <input class="field !w-36 font-mono" id="ver" placeholder="0.2.0" /></div>`
+                 <input class="field !w-36 font-mono" id="ver" placeholder="0.2.0" value="${esc(S.ver)}" />
+                 <span id="ver-parts" class="flex items-end gap-2">${verParts(S.ver)}</span></div>`
               : `<div><span class="font-mono text-lg font-medium">${esc(rel.version)}</span>
                  <span class="ml-2 text-sm text-stone-500">published ${when(rel.pub_date)}</span></div>
                  <button class="btn-danger" id="unpublish" type="button"><i class="iconoir-bin-minus-in"></i>Unpublish</button>`
@@ -227,7 +229,7 @@
           <div id="queue">${queueTable()}</div>
           <div>
             <label class="label" for="notes">Release notes</label>
-            <textarea class="field min-h-20 resize-y" id="notes" placeholder="What changed.">${esc(rel?.notes ?? "")}</textarea>
+            <textarea class="field min-h-20 resize-y" id="notes" placeholder="What changed.">${esc(S.notes)}</textarea>
           </div>
           <div class="flex flex-wrap items-center gap-3">
             <button class="btn-primary" id="publish" type="button"><i class="iconoir-upload"></i><span>Publish</span></button>
@@ -237,10 +239,10 @@
       </div>`;
 
     for (const b of $("main").querySelectorAll("[data-v]")) b.onclick = () => selectVersion(b.dataset.v);
-    $("unlisted").onchange = async () => {
+    $("listed").onchange = async () => {
       try {
-        await api("PUT", `/${S.slug}`, { unlisted: $("unlisted").checked });
-        app.unlisted = $("unlisted").checked;
+        await api("PUT", `/${S.slug}`, { unlisted: !$("listed").checked });
+        app.unlisted = !$("listed").checked;
       } catch (err) {
         status(err.message, "bad");
       }
@@ -278,6 +280,13 @@
       take(e.dataTransfer.files);
     };
     $("publish").onclick = publish;
+    $("notes").oninput = () => (S.notes = $("notes").value);
+    if ($("ver")) {
+      $("ver").oninput = () => {
+        S.ver = $("ver").value;
+        $("ver-parts").innerHTML = verParts(S.ver);
+      };
+    }
     bindQueue();
     updatePublish();
   }
@@ -292,6 +301,23 @@
       status(err.message, "bad");
     }
   };
+
+  // Major, minor and patch as the server will store them, so "v1.2" reads
+  // back as 1 . 2 . 0 while it is typed. Nothing until the input parses.
+  function verParts(raw) {
+    const v = semver(raw ?? "");
+    if (!v) return "";
+    const [nums, tail] = v.split(/(?=[-+])/);
+    const part = (n, label) =>
+      `<span class="flex flex-col items-center"><span class="font-mono text-sm">${esc(n)}</span><span class="text-[10px] uppercase tracking-wide text-stone-400">${label}</span></span>`;
+    return (
+      nums
+        .split(".")
+        .map((n, i) => part(n, ["major", "minor", "patch"][i]))
+        .join(`<span class="pb-3.5 text-stone-400">.</span>`) +
+      (tail ? `<span class="pb-3.5 font-mono text-xs text-stone-400">${esc(tail)}</span>` : "")
+    );
+  }
 
   function osColumn(os, label, icon) {
     const have = (S.release?.artifacts ?? []).filter((a) => a.platform.startsWith(os));
@@ -335,9 +361,9 @@
     const have = S.queue.flatMap((r) => [r.file, r.sig]).filter(Boolean);
     const names = new Set([...files].map((f) => f.name));
     S.queue = pair([...have.filter((f) => !names.has(f.name)), ...files]);
-    if (S.version === "new" && $("ver") && !$("ver").value) {
+    if (S.version === "new" && !S.ver) {
       const m = S.queue[0]?.file.name.match(/(\d+\.\d+(\.\d+)?)/);
-      if (m) $("ver").value = m[1];
+      if (m) S.ver = m[1];
     }
     renderMain();
   }
@@ -393,7 +419,7 @@
   }
 
   async function publish() {
-    const version = S.version === "new" ? semver($("ver").value) : S.version;
+    const version = S.version === "new" ? semver(S.ver) : S.version;
     if (!version) return status("Version must be semver, for example 0.2.0.", "bad");
     if (S.queue.some((r) => !r.platform)) return status("Choose a platform for every file.", "bad");
     S.busy = true;
@@ -409,7 +435,7 @@
         if (r.sig) artifacts[r.platform].signature = (await r.sig.text()).trim();
       }
       status("Publishing");
-      await api("POST", `/${S.slug}/releases`, { version, notes: $("notes").value, artifacts });
+      await api("POST", `/${S.slug}/releases`, { version, notes: S.notes, artifacts });
       S.queue = [];
       await loadApps();
       S.versions = (await api("GET", `/${S.slug}/releases`)).releases;
