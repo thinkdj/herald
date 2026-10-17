@@ -36,6 +36,7 @@ lib/auth.js            password check, signed session cookie, bearer token
 lib/db.js              every D1 query
 lib/feeds.js           the dialects, plus version and platform rules. all pure
 lib/render.js          {{placeholder}} templating, and the page security headers
+lib/badge.js           the README badge, text in, SVG out
 lib/demo.js            the same queries as db.js over demo/*.json, for /demo
 templates/*.html       real HTML files, imported as text modules
 vendor/                the Tailwind play build, a .txt so it imports as text too
@@ -77,10 +78,17 @@ scripts, the two stylesheet hosts, and nothing else, and that forbids framing.
 | `GET /:slug/latest.json` | Tauri feed, all platforms |
 | `GET /:slug/:target/:arch/:version` | Tauri templated feed, `204` when the client is current |
 | `GET /:slug/latest.yml` | electron-updater, Windows. Also `latest-mac.yml`, `latest-linux.yml` |
+| `GET /:slug/appcast.xml` | Sparkle feed for macOS, universal build first |
+| `GET /:slug/download` | Download page: a button per OS, the visitor's own promoted, every file, a badge |
+| `GET /:slug/badge.svg` | The latest version as a flat badge for a README |
+| `GET /:slug/stats` | Counts for the last 30 days. Requires a session or the token |
 | `GET /:slug/releases` | Release history, newest first, up to 100. Enough for a changelog |
 | `GET /:slug/releases/:version` | One release with its artifacts and whether each is signed or hashed |
 | `GET /:slug/download/:platform` | `302` to the artifact. Takes `windows`, `macos`, `linux`, or an exact key |
-| `POST /:slug/releases` | Publish. Artifacts merge per platform; with none, only the notes change |
+
+Every feed, badge and download route takes `?channel=beta` or `?channel=nightly`.
+Without it, stable.
+| `POST /:slug/releases` | Publish. Artifacts merge per platform; with none, only the notes and channel change |
 | `DELETE /:slug/releases/:version` | Unpublish |
 | `DELETE /:slug/releases/:version/:platform` | Remove one artifact from a release |
 
@@ -145,6 +153,37 @@ password or a bearer token is throttled either way.
 | `LOGIN_GLOBAL` | `POST /login` | 30 per minute for everyone together |
 | `ADMIN_LIMIT` | `GET /admin`, upload, publish, unpublish | 60 per minute |
 
+## Release channels
+
+A release is published to one channel: `stable`, `beta` or `nightly`, stable
+when unsaid. A client follows a channel by adding `?channel=` to its feed URL,
+and accepts that channel and every one before it: beta sees stable and beta,
+nightly sees all three, stable sees stable only. So a tester on beta gets the
+stable release the day it ships and is never left behind. Latest is still the
+newest `pub_date` among the accepted releases. The admin's version pills and
+the public history label anything that is not stable.
+
+## Counts
+
+Herald keeps one number per app, day, kind and version, and nothing else: no
+address, no agent, no time finer than a day. Two kinds:
+
+- `check`: a feed was read. When the feed carries the client's current version
+  (Tauri's templated route) that version is recorded, which is what tells you
+  which versions are still out there. Other feeds record a blank version.
+- `download`: Herald served a whole artifact from `/files/`. A `304` or a
+  range request is not counted, so a resumed download is one download. A file
+  hosted elsewhere and linked by URL is never seen and never counted.
+
+Counts are buffered in the Worker and written in one batch every few seconds
+or when the buffer fills, so a thousand update checks are one database write.
+The buffer is capped and an isolate that dies before its flush loses a few
+seconds of counts: the numbers are approximate by design.
+
+The admin page shows the last 30 days per app: checks per day as bars, then
+checks over the last week and downloads over the month per version.
+`GET /:slug/stats` returns the rows to the operator; it is not public.
+
 ## Behaviour worth knowing
 
 - Latest means the newest `pub_date`. A release keeps the date it was first
@@ -162,6 +201,9 @@ password or a bearer token is throttled either way.
   published from one machine and the macOS build from another land in the same
   release. To drop a platform, unpublish the version and publish it again.
 - A darwin client is always offered `darwin-universal` as well as its own arch.
+- Sparkle has no notion of arch, so `appcast.xml` lists the universal build
+  first and the single arch ones after it. An artifact without a signature
+  still appears, since a Sparkle app signed by Apple can verify that way.
 - `204` on the Tauri templated route covers both "you are current" and "nothing
   installable for your platform". Neither is something a user can act on. A
   feed that does not exist at all is a `404`.

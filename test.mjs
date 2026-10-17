@@ -7,8 +7,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { badge } from "./lib/badge.js";
 import {
+  channelsFor,
   electronFeed,
+  normalizeChannel,
+  sparkleFeed,
   guessPlatform,
   isNewer,
   normalizeDate,
@@ -16,6 +20,7 @@ import {
   platformKeys,
   tauriFeed,
   toYaml,
+  CHANNELS,
   PLATFORMS,
 } from "./lib/feeds.js";
 import { esc, render } from "./lib/render.js";
@@ -53,6 +58,17 @@ assert.equal(normalizeVersion(""), null);
 assert.equal(normalizeDate("2026-01-01T10:00:00+05:30"), "2026-01-01T04:30:00.000Z");
 assert.equal(normalizeDate("nonsense"), null);
 assert.match(normalizeDate(undefined), /^\d{4}-/, "missing date defaults to now");
+
+// ---------------------------------------------------------------- channels
+
+assert.deepEqual(CHANNELS, ["stable", "beta", "nightly"]);
+assert.equal(normalizeChannel(undefined), "stable", "unsaid means stable");
+assert.equal(normalizeChannel(""), "stable");
+assert.equal(normalizeChannel(" Beta "), "beta");
+assert.equal(normalizeChannel("canary"), null);
+assert.deepEqual(channelsFor("stable"), ["stable"]);
+assert.deepEqual(channelsFor("beta"), ["stable", "beta"], "beta accepts stable too");
+assert.deepEqual(channelsFor("nightly"), ["stable", "beta", "nightly"]);
 
 // ---------------------------------------------------------------- platforms
 
@@ -127,6 +143,30 @@ assert.match(out, /^ {2}- url: 'https:\/\/x\/a\.msi'$/m);
 assert.match(out, /^ {4}size: 100$/m, "size stays a bare number");
 assert.match(toYaml({ n: "it's" }), /^n: 'it''s'$/, "single quotes are doubled");
 
+// Sparkle: one item per macOS artifact, universal first, signature and
+// length only when the artifact has them, notes in CDATA.
+const cast = sparkleFeed("ctx", { ...release, notes: "a <b> & ]]> c" }, [
+  ...files,
+  { platform: "darwin-aarch64", url: "https://x/arm.app.tar.gz", size: 9 },
+]);
+assert.match(cast, /<title>ctx<\/title>/);
+assert.equal((cast.match(/<item>/g) ?? []).length, 2, "two macOS artifacts, two items");
+assert.ok(cast.indexOf("a.app.tar.gz") < cast.indexOf("arm.app.tar.gz"), "universal first");
+assert.match(cast, /url="https:\/\/x\/a\.app\.tar\.gz" type="application\/octet-stream" sparkle:edSignature="sig-m"\/>/);
+assert.match(cast, /url="https:\/\/x\/arm\.app\.tar\.gz" type="application\/octet-stream" length="9"\/>/);
+assert.match(cast, /<sparkle:version>1\.0\.0<\/sparkle:version>/);
+assert.match(cast, /<description><!\[CDATA\[a <b> & \]\]\]\]><!\[CDATA\[> c\]\]><\/description>/, "a ]]> inside notes cannot end the CDATA");
+assert.match(cast, /<pubDate>Thu, 01 Jan 2026 00:00:00 GMT<\/pubDate>/);
+assert.equal(sparkleFeed("ctx", release, files.filter((f) => !f.platform.startsWith("darwin"))), null, "no macOS artifact, no appcast");
+
+// The badge is an SVG with both texts and a width that grows with them.
+const b = badge("release", "0.1.1");
+assert.match(b, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" width="\d+" height="20"/);
+assert.match(b, />release<\/text>/);
+assert.match(b, />0\.1\.1<\/text>/);
+assert.ok(Number(badge("release", "10.20.30").match(/width="(\d+)"/)[1]) > Number(b.match(/width="(\d+)"/)[1]));
+assert.match(badge("a", '"<x>"'), /aria-label="a: &quot;&lt;x&gt;&quot;"/, "escaped");
+
 // ---------------------------------------------------------------- templating
 
 assert.equal(render("<p>{{a}}</p>", { a: "<b>" }), "<p>&lt;b&gt;</p>", "double braces escape");
@@ -137,7 +177,7 @@ assert.equal(render("{{missing}}", {}), "{{missing}}", "an unknown key is left a
 assert.equal(render("`${x}` and {{y}}", { y: "1" }), "`${x}` and 1");
 assert.equal(esc(`<&">'`), "&lt;&amp;&quot;&gt;&#39;");
 
-for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "login.html", "admin.html", "about.html"]) {
+for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "login.html", "admin.html", "about.html", "download.html"]) {
   const body = tpl(name);
   assert.ok(body.length > 0, `${name} must not be empty`);
   // Every placeholder the templates use must be one a route actually supplies.
@@ -146,6 +186,7 @@ for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "l
       [
         "title", "nav", "body", "count", "apps", "name", "version", "platforms",
         "links", "error", "boot", "when", "href", "card", "history", "demo", "tryDemo",
+        "slug", "channel", "buttons", "rows", "badge",
       ].includes(key),
       `${name} uses an unknown placeholder: ${key}`,
     );
@@ -258,6 +299,9 @@ assert.ok(store.demo, "a demo handle says so, which is how worker.js picks it ov
 const listed = demo.appsWithLatest(store);
 assert.deepEqual(listed.map((a) => a.slug), ["ctx", "nimbus", "orbit"], "sorted by name");
 assert.equal(listed[0].version, "0.1.1", "newest pub_date wins");
+assert.equal(listed[0].channel, "stable");
+assert.equal(listed[1].version, "2.5.0", "the card shows the newest release whatever its channel");
+assert.equal(listed[1].channel, "beta");
 assert.deepEqual(listed[0].platforms, ["darwin-aarch64", "windows-x86_64"]);
 assert.equal(listed[0].signed, true, "ctx has a Tauri feed");
 assert.equal(listed[0].hashed, false);
@@ -265,13 +309,39 @@ assert.equal(listed[1].hashed, true, "nimbus has an Electron feed");
 assert.equal(listed[2].version, null, "an app with no release still lists");
 assert.equal(listed[2].unlisted, true);
 assert.equal(demo.releaseHistory(store, "ctx").length, 2);
+
+// Channels: stable sees stable only, beta sees the newer beta too.
+assert.equal(demo.latestRelease(store, "nimbus").version, "2.4.0", "a stable client does not get the beta");
+assert.equal(demo.latestRelease(store, "nimbus", "beta").version, "2.5.0");
+assert.equal(demo.latestRelease(store, "nimbus", "nightly").version, "2.5.0", "nightly accepts beta");
+assert.equal(demo.releaseHistory(store, "nimbus")[0].channel, "beta");
+
+// Counts: one row per day, kind and version, bumped in place; unknown apps
+// write nothing; deleting an app takes its counts with it.
+const before = demo.hitsFor(store, "ctx").length;
+demo.countHits(store, [
+  { slug: "ctx", kind: "check", version: "0.1.1", n: 2 },
+  { slug: "ctx", kind: "download", version: "0.1.1", n: 1 },
+  { slug: "nope", kind: "check", version: "", n: 1 },
+]);
+const todayRows = demo.hitsFor(store, "ctx").filter((h) => h.day === demo.today());
+assert.equal(todayRows.find((h) => h.kind === "check" && h.version === "0.1.1").count, 42, "the seed's 40 plus two");
+assert.equal(todayRows.find((h) => h.kind === "download").count, 2, "the seed's 1 plus one");
+assert.equal(demo.hitsFor(store, "ctx").length, before, "no new rows for an existing day, kind and version");
+assert.equal(demo.hitsFor(store, "nope").length, 0);
+assert.ok(demo.hitsFor(store, "ctx").every((h) => !("app_slug" in h)), "rows carry day, kind, version and count only");
 assert.equal(demo.artifactsFor(store, 4).length, 3);
 
 // A publish round trip: a new version becomes latest, a notes edit keeps the
 // date, and deletes cascade the way the schema's foreign keys do.
 demo.upsertApp(store, "orbit", "Orbit One");
 assert.equal(demo.appsWithLatest(store).find((a) => a.slug === "orbit").name, "Orbit One");
-const { id } = demo.upsertRelease(store, "orbit", "1.0.0", "first", null);
+const { id } = demo.upsertRelease(store, "orbit", "1.0.0", "first", null, "beta");
+assert.equal(demo.releaseByVersion(store, "orbit", "1.0.0").channel, "beta");
+demo.upsertRelease(store, "orbit", "1.0.0", null, null, null);
+assert.equal(demo.releaseByVersion(store, "orbit", "1.0.0").channel, "beta", "a null channel keeps the channel");
+demo.upsertRelease(store, "orbit", "1.0.0", null, null, "stable");
+assert.equal(demo.releaseByVersion(store, "orbit", "1.0.0").channel, "stable");
 assert.equal(demo.latestRelease(store, "orbit"), null, "a release with no artifacts is not latest");
 demo.upsertArtifacts(store, id, [["linux-x86_64", { url: "https://x/a.AppImage", size: 5 }]]);
 assert.equal(demo.latestRelease(store, "orbit").version, "1.0.0");
@@ -284,6 +354,7 @@ assert.equal(demo.deleteArtifact(store, "orbit", "1.0.0", "linux-x86_64"), null)
 assert.deepEqual(demo.deleteRelease(store, "orbit", "1.0.0"), { version: "1.0.0" });
 assert.deepEqual(demo.deleteApp(store, "ctx"), { slug: "ctx" });
 assert.equal(demo.releaseHistory(store, "ctx").length, 0, "releases go with the app");
+assert.equal(demo.hitsFor(store, "ctx").length, 0, "and so do the counts");
 assert.equal(store.artifacts.some((a) => a.release_id <= 2), false, "and so do their artifacts");
 assert.equal(demo.deleteApp(store, "ctx"), null);
 assert.equal(demo.createStore().apps.length, 3, "each store starts from the seed files");

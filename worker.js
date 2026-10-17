@@ -16,6 +16,10 @@
 //   GET    /:slug/latest.yml                 electron-updater, Windows
 //   GET    /:slug/latest-mac.yml             electron-updater, macOS
 //   GET    /:slug/latest-linux.yml           electron-updater, Linux
+//   GET    /:slug/appcast.xml                Sparkle feed, macOS
+//   GET    /:slug/download                   download page: one button per OS, every file, a badge
+//   GET    /:slug/badge.svg                  the latest version as a README badge
+//   GET    /:slug/stats                      counts for the last 30 days, requires a session
 //   GET    /:slug/releases                   release history, newest first
 //   GET    /:slug/releases/:version          one release with its artifacts
 //   GET    /:slug/download/:platform         302 to the artifact, for a site button
@@ -28,15 +32,23 @@
 // an installed app's updater has no credentials and neither does a download
 // button.
 //
+// Every feed and download link takes ?channel=beta or ?channel=nightly. A
+// release is published to one channel, and a subscriber accepts that channel
+// and the ones before it, so beta sees stable and beta.
+//
 // Artifacts are either uploaded into Herald's own R2 bucket or hosted somewhere
 // else and referenced by URL. Both can be mixed, per app and per platform.
 
 import { authorized, checkCredentials, clearCookie, failureDelay, secretOk, sessionCookie, MIN_SECRET_LENGTH } from "./lib/auth.js";
 import * as d1 from "./lib/db.js";
 import * as demo from "./lib/demo.js";
+import { badge } from "./lib/badge.js";
 import {
   ALIASES,
+  CHANNELS,
   CONTENT_TYPES,
+  normalizeChannel,
+  sparkleFeed,
   ELECTRON_FEEDS,
   PLATFORMS,
   electronFeed,
@@ -56,6 +68,7 @@ import loginTpl from "./templates/login.html";
 import adminTpl from "./templates/admin.html";
 import appTpl from "./templates/app.html";
 import aboutTpl from "./templates/about.html";
+import downloadTpl from "./templates/download.html";
 // Tailwind's play build, as a text module for the same reason the templates
 // are: wrangler bundles .txt as text with no rule to add.
 import tailwind from "./vendor/tailwind-3.4.17.txt";
@@ -139,11 +152,45 @@ const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-be
 // and the demo bar when the session is a sandbox.
 const chrome = (signedIn, demoMode) => ({ nav: navFor(signedIn, demoMode), demo: demoMode ? DEMO_BAR : "" });
 
+// Counts are buffered here, per isolate, and written in one batch a few
+// seconds later or when the buffer fills: a thousand update checks become
+// one D1 write with a handful of statements, not a thousand writes, and a
+// loop on a feed URL cannot turn into write load on the database. The buffer
+// is capped; past the cap a count is dropped, which is the right failure for
+// a number that is only ever approximate. An isolate that dies before its
+// flush loses a few seconds of counts, same answer.
+const FLUSH_MS = 5000;
+const FLUSH_AT = 200;
+const BUFFER_MAX = 2000;
+const buffers = { d1: null, demo: null };
+function queueHit(env, ctx, slug, kind, version = "") {
+  const which = env.DB?.demo ? "demo" : "d1";
+  const b = (buffers[which] ??= { rows: new Map(), timer: null });
+  b.db = env.DB;
+  const key = `${slug}|${kind}|${version}`;
+  const row = b.rows.get(key);
+  if (row) row.n += 1;
+  else if (b.rows.size < BUFFER_MAX) b.rows.set(key, { slug, kind, version, n: 1 });
+  const flush = async () => {
+    const rows = [...b.rows.values()];
+    b.rows.clear();
+    b.timer = null;
+    if (rows.length) await db.countHits(b.db, rows).catch(() => {});
+  };
+  if (b.rows.size >= FLUSH_AT) b.timer = flush();
+  else b.timer ??= new Promise((r) => setTimeout(r, FLUSH_MS)).then(flush);
+  // Keeps the isolate alive until the pending flush has run.
+  ctx.waitUntil(b.timer);
+}
+
 const OS = [
   ["windows", "Windows", "windows", "iconoir-windows"],
   ["darwin", "macOS", "macos", "iconoir-apple-mac"],
   ["linux", "Linux", "linux", "iconoir-linux"],
 ];
+
+// Stable is the default and goes unlabelled; anything else is marked.
+const channelChip = (channel) => (channel && channel !== "stable" ? ` <span class="chip">${esc(channel)}</span>` : "");
 
 const shortDate = (d) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -158,6 +205,10 @@ function appCard(a, origin) {
         // an electron feed needs a hash and a size.
         ...(a.signed ? [["iconoir-rss-feed", "Tauri feed", `/${a.slug}/latest.json`]] : []),
         ...(a.hashed ? [["iconoir-rss-feed", "Electron feed", `/${a.slug}/latest.yml`]] : []),
+        ...(a.signed && a.platforms.some((p) => p.startsWith("darwin"))
+          ? [["iconoir-rss-feed", "Sparkle feed", `/${a.slug}/appcast.xml`]]
+          : []),
+        ["iconoir-download", "Download page", `/${a.slug}/download`],
         ["iconoir-journal", "History", `/${a.slug}/releases`],
         ...OS.filter(([os]) => a.platforms.some((p) => p.startsWith(os))).map(([, label, alias, icon]) => [
           icon,
@@ -170,7 +221,7 @@ function appCard(a, origin) {
     name: a.name,
     href: `/${a.slug}`,
     version: a.version ?? "no release yet",
-    when: a.pub_date ? ` <span class="text-stone-400">&bull;</span> ${shortDate(a.pub_date)}` : "",
+    when: (a.pub_date ? ` <span class="text-stone-400">&bull;</span> ${shortDate(a.pub_date)}` : "") + channelChip(a.channel),
     platforms: a.platforms.map((p) => `<span class="chip">${esc(p)}</span>`).join(""),
     links: links
       .map(
@@ -208,7 +259,7 @@ async function appPage(env, ui, origin, slug) {
     .map(
       (r) => `<li class="card px-5 py-4">
         <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <span class="font-mono font-medium">${esc(r.version)}</span>
+          <span class="font-mono font-medium">${esc(r.version)}${channelChip(r.channel)}</span>
           <span class="text-sm text-stone-500 dark:text-stone-400">${shortDate(r.pub_date)}</span>
         </div>
         <div class="mt-2 flex flex-wrap gap-1.5">${r.platforms.map((p) => `<span class="chip">${esc(p)}</span>`).join("")}</div>
@@ -221,6 +272,52 @@ async function appPage(env, ui, origin, slug) {
     ...ui,
     card: appCard(app, origin),
     history: history || `<li class="text-sm text-stone-500">Nothing published yet.</li>`,
+  });
+}
+
+// Public download page: a button per OS that script promotes for the
+// visitor's own, every file of the latest release, and a badge for a README.
+async function downloadPage(env, ui, origin, slug, channel) {
+  const app = (await db.appsWithLatest(env.DB)).find((a) => a.slug === slug);
+  if (!app) return json({ error: "not found" }, 404, 0);
+  const release = await db.latestRelease(env.DB, slug, channel);
+  const files = release ? (await db.artifactsFor(env.DB, release.id)).sort((a, b) => a.platform.localeCompare(b.platform)) : [];
+  const q = channel === "stable" ? "" : `?channel=${channel}`;
+  const buttons = OS.filter(([os]) => files.some((f) => f.platform.startsWith(os)))
+    .map(
+      ([os, label, alias, icon]) => `<a class="btn-quiet !flex-col !items-start gap-1 !px-4 !py-3" data-os="${alias}" href="/${esc(slug)}/download/${alias}${q}">
+        <span class="inline-flex items-center gap-2 text-base"><i class="${icon} text-xl"></i>${label}</span>
+        <span class="text-xs opacity-70" data-hint>${files
+          .filter((f) => f.platform.startsWith(os))
+          .map((f) => esc(f.platform.slice(os.length + 1)))
+          .join(", ")}</span>
+      </a>`,
+    )
+    .join("");
+  const rows = files
+    .map(
+      (f) => `<tr class="border-t border-line first:border-0 dark:border-line-dark">
+        <td class="whitespace-nowrap py-2 pl-5 pr-4"><span class="chip">${esc(f.platform)}</span></td>
+        <td class="w-full break-all py-2 pr-4 font-mono text-xs"><a class="hover:underline" href="${esc(f.url)}">${esc(f.url.split("/").pop())}</a></td>
+        <td class="whitespace-nowrap py-2 pr-4 text-xs text-stone-500">${f.size ? `${(f.size / 1048576).toFixed(1)} MB` : ""}</td>
+        <td class="whitespace-nowrap py-2 pr-5 text-xs text-emerald-700 dark:text-emerald-400">${
+          f.signature ? '<i class="iconoir-shield-check"></i> signed' : f.sha512 ? '<i class="iconoir-check-circle"></i> hashed' : ""
+        }</td>
+      </tr>`,
+    )
+    .join("");
+  return page(layout, downloadTpl, {
+    title: `Download ${app.name}`,
+    ...ui,
+    name: app.name,
+    slug,
+    href: `/${slug}`,
+    channel,
+    version: release?.version ?? "no release yet",
+    when: release ? ` <span class="text-stone-400">&bull;</span> ${shortDate(release.pub_date)}` : "",
+    buttons: buttons || `<p class="text-sm text-stone-500 sm:col-span-3">Nothing published on this channel yet.</p>`,
+    rows: rows || `<tr><td class="px-5 py-4 text-sm text-stone-500">No files.</td></tr>`,
+    badge: `[![Latest release](${origin}/${slug}/badge.svg)](${origin}/${slug}/download)`,
   });
 }
 
@@ -271,7 +368,7 @@ async function admin(env, ui) {
   return page(layout, adminTpl, {
     title: "Publish",
     ...ui,
-    boot: JSON.stringify({ apps, platforms: PLATFORMS }).replace(/</g, "\\u003c"),
+    boot: JSON.stringify({ apps, platforms: PLATFORMS, channels: CHANNELS }).replace(/</g, "\\u003c"),
   });
 }
 
@@ -281,9 +378,15 @@ async function admin(env, ui) {
 // signature is an update that fails to verify. `onlyIf` answers that check
 // with a 304, and `range` a resumed download, both straight from the request
 // headers.
-async function serveFile(req, env, key) {
+async function serveFile(req, env, key, count) {
   if (!env.BUCKET) return json({ error: "no bucket bound" }, 501, 0);
   const object = await env.BUCKET.get(key, { range: req.headers, onlyIf: req.headers });
+  // A whole file going out is one download. A 304, a range or a HEAD is not:
+  // a resumed download would count once per chunk, a probe is not a download.
+  if (object?.body && req.method === "GET" && !req.headers.has("range")) {
+    const [slug, version] = key.split("/");
+    count(slug, "download", version);
+  }
   if (!object) return json({ error: "not found" }, 404, 0);
 
   const headers = new Headers();
@@ -356,6 +459,9 @@ async function publish(env, slug, req) {
   const pubDate = body.pub_date == null ? null : normalizeDate(body.pub_date);
   if (body.pub_date != null && !pubDate) return json({ error: "pub_date must be a parseable date" }, 400, 0);
 
+  const channel = body.channel == null ? null : normalizeChannel(body.channel);
+  if (body.channel != null && !channel) return json({ error: `channel must be one of ${CHANNELS.join(", ")}` }, 400, 0);
+
   const artifacts = Object.entries(body.artifacts ?? {});
   // A publish is one D1 batch, so the statement count stays bounded.
   if (artifacts.length > 24) return json({ error: "too many artifacts" }, 400, 0);
@@ -376,7 +482,7 @@ async function publish(env, slug, req) {
 
   await db.upsertApp(env.DB, slug, body.name === undefined ? null : String(body.name));
   const notes = body.notes === undefined ? null : String(body.notes);
-  const release = await db.upsertRelease(env.DB, slug, version, notes, pubDate);
+  const release = await db.upsertRelease(env.DB, slug, version, notes, pubDate, channel);
   if (artifacts.length) await db.upsertArtifacts(env.DB, release.id, artifacts);
   return json({ ok: true, app: slug, version, platforms: artifacts.map(([p]) => p) }, 200, 0);
 }
@@ -396,7 +502,7 @@ async function releaseDetail(env, slug, version) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const seg = url.pathname.split("/").filter(Boolean);
     // A HEAD is a GET whose body is dropped by the runtime. Download clients
@@ -409,6 +515,9 @@ export default {
     if (demoMode) env = demo.demoEnv(env);
     const signedIn = async () => demoMode || authorized(req, env);
     const ui = async () => chrome(await signedIn(), demoMode);
+    // Counting is a buffer append; the write happens later, in a batch, and
+    // can never fail or slow a request.
+    const count = (slug, kind, version = "") => queueHit(env, ctx, slug, kind, version);
 
     if (seg.length === 0) {
       if (url.searchParams.get("format") === "json") {
@@ -436,7 +545,7 @@ export default {
     }
     if (seg[0] === "files") {
       if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
-      return serveFile(req, env, seg.slice(1).join("/"));
+      return serveFile(req, env, seg.slice(1).join("/"), count);
     }
     if (seg[0] === "about" && seg.length === 1) {
       if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
@@ -506,6 +615,13 @@ export default {
 
     if (rest.length === 0) return appPage(env, await ui(), url.origin, slug);
 
+    // The operator's counts. Not public: they say how many copies are out
+    // there, which is the operator's business and nobody else's.
+    if (rest.length === 1 && rest[0] === "stats") {
+      if (!(await signedIn())) return json({ error: "unauthorized" }, 401, 0);
+      return json({ app: slug, days: 30, hits: await db.hitsFor(env.DB, slug, 30) }, 200, 0);
+    }
+
     // Release history, newest first. Lets a site render a changelog from
     // Herald instead of a hand-maintained file.
     if (rest[0] === "releases") {
@@ -513,7 +629,17 @@ export default {
       if (rest.length === 2) return releaseDetail(env, slug, rest[1]);
     }
 
-    const release = await db.latestRelease(env.DB, slug);
+    const channel = normalizeChannel(url.searchParams.get("channel"));
+    if (!channel) return json({ error: `channel must be one of ${CHANNELS.join(", ")}` }, 400, 0);
+
+    if (rest.length === 1 && rest[0] === "download") return downloadPage(env, await ui(), url.origin, slug, channel);
+
+    const release = await db.latestRelease(env.DB, slug, channel);
+    if (rest.length === 1 && rest[0] === "badge.svg") {
+      return new Response(badge(channel === "stable" ? "release" : channel, release?.version ?? "none"), {
+        headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=300" },
+      });
+    }
     if (!release) return json({ error: `no release for ${slug}` }, 404, 0);
 
     // Stable download link: /:slug/download/windows or /:slug/download/windows-x86_64
@@ -525,7 +651,17 @@ export default {
       return Response.redirect(hit.url, 302);
     }
 
+    if (rest.length === 1 && rest[0] === "appcast.xml") {
+      count(slug, "check");
+      const feed = sparkleFeed(slug, release, await db.artifactsFor(env.DB, release.id));
+      if (!feed) return json({ error: `no macOS artifact for ${slug}` }, 404, 0);
+      return new Response(feed, {
+        headers: { "content-type": "application/rss+xml; charset=utf-8", "cache-control": "public, max-age=60" },
+      });
+    }
+
     if (rest.length === 1 && rest[0] === "latest.json") {
+      count(slug, "check");
       const feed = tauriFeed(release, await db.artifactsFor(env.DB, release.id));
       // An app that publishes no signatures has no Tauri feed, which is a 404
       // rather than a 200 carrying an empty platform map the client would
@@ -540,6 +676,7 @@ export default {
     // electron-updater reads one file per OS and follows no version in the URL,
     // so it compares versions itself and needs no 204 path.
     if (rest.length === 1 && rest[0] in ELECTRON_FEEDS) {
+      count(slug, "check");
       const feed = electronFeed(
         release,
         await db.artifactsFor(env.DB, release.id),
@@ -552,6 +689,9 @@ export default {
     // Tauri templated endpoint: /:slug/{{target}}/{{arch}}/{{current_version}}
     if (rest.length === 3) {
       const [target, arch, current] = rest;
+      // Counted before the 204: a client that is current is still a client,
+      // and its version is the installed base.
+      count(slug, "check", normalizeVersion(current) ?? "");
       if (!isNewer(release.version, current)) return new Response(null, { status: 204 });
       const feed = tauriFeed(
         release,

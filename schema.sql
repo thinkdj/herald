@@ -1,5 +1,5 @@
 -- Herald schema. One row per app, one row per release, one row per platform
--- artifact. Apply with:
+-- artifact, one row per day of counts. Apply with:
 --   wrangler d1 execute herald --remote --config herald/wrangler.jsonc
 --     --file herald/schema.sql
 
@@ -12,10 +12,14 @@ CREATE TABLE IF NOT EXISTS apps (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- channel is stable, beta or nightly. A client on beta takes the newest of
+-- stable and beta; one on nightly takes the newest of all three; stable takes
+-- stable only. So a beta tester is never left behind a stable release.
 CREATE TABLE IF NOT EXISTS releases (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   app_slug TEXT NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,
   version TEXT NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'stable',
   notes TEXT NOT NULL DEFAULT '',
   pub_date TEXT NOT NULL,
   UNIQUE (app_slug, version)
@@ -26,7 +30,8 @@ CREATE TABLE IF NOT EXISTS releases (
 --
 -- Each updater verifies differently, and an artifact missing what a given
 -- updater needs is left out of that feed only:
---   signature  minisign output from Tauri's bundler, for latest.json
+--   signature  minisign output from Tauri's bundler, for latest.json, or an
+--              EdDSA signature for Sparkle's appcast.xml
 --   sha512     base64 SHA-512 and size, for electron-updater's latest*.yml
 -- An artifact with neither is still downloadable, which is what an unsigned
 -- test build should be.
@@ -38,6 +43,20 @@ CREATE TABLE IF NOT EXISTS artifacts (
   sha512 TEXT,
   size INTEGER,
   PRIMARY KEY (release_id, platform)
+);
+
+-- Counts, and only counts: no address, no agent, no time finer than a day.
+--   check     a feed was read. version is what the client said it runs, when
+--             the feed carries that (Tauri's templated route), else ''
+--   download  Herald served an artifact's bytes. version is the one served
+-- Enough to see a release roll out and a version die off, nothing more.
+CREATE TABLE IF NOT EXISTS hits (
+  app_slug TEXT NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  version TEXT NOT NULL DEFAULT '',
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (app_slug, day, kind, version)
 );
 
 CREATE INDEX IF NOT EXISTS releases_latest ON releases (app_slug, pub_date DESC, id DESC);

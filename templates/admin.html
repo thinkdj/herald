@@ -26,6 +26,7 @@
   const $ = (id) => document.getElementById(id);
   const boot = JSON.parse($("boot").textContent);
   const KEYS = boot.platforms;
+  const CHANNELS = boot.channels;
   const OS = [
     ["windows", "Windows", "iconoir-windows", "windows"],
     ["darwin", "macOS", "iconoir-apple-mac", "macos"],
@@ -66,7 +67,7 @@
 
   // ------------------------------------------------------------------ state
 
-  const S = { apps: boot.apps, slug: null, versions: [], version: null, release: null, queue: [], busy: false, note: "", ver: "", notes: "" };
+  const S = { apps: boot.apps, slug: null, versions: [], version: null, release: null, queue: [], busy: false, note: "", ver: "", notes: "", channel: "stable", hits: [] };
 
   async function loadApps() {
     S.apps = (await api("GET", "/admin?format=json")).apps;
@@ -76,6 +77,7 @@
     S.slug = slug;
     S.queue = [];
     S.versions = slug ? (await api("GET", `/${slug}/releases`)).releases : [];
+    S.hits = slug ? (await api("GET", `/${slug}/stats`)).hits : [];
     renderApps();
     await selectVersion(version ?? S.versions[0]?.version ?? "new");
   }
@@ -85,6 +87,7 @@
     S.note = "";
     S.ver = "";
     S.notes = S.release?.notes ?? "";
+    S.channel = S.release?.channel ?? "stable";
     location.hash = S.slug ? `${S.slug}/${v}` : "";
     renderMain();
   }
@@ -187,6 +190,8 @@
 
       ${rows ? `<div class="card mb-8 overflow-x-auto"><table class="w-full text-sm"><tbody>${rows}</tbody></table></div>` : ""}
 
+      ${statsPanel()}
+
       <div class="mb-4 flex flex-wrap items-center gap-2">
         <span class="mr-1 text-sm text-stone-600 dark:text-stone-400">Versions</span>
         ${S.versions
@@ -195,7 +200,7 @@
               r.version === S.version
                 ? "border-seal bg-seal text-white dark:border-seal-bright dark:bg-seal-bright dark:text-stone-950"
                 : "border-line bg-card text-stone-700 hover:border-stone-400 dark:border-line-dark dark:bg-card-dark dark:text-stone-300"
-            }">${esc(r.version)}<span class="ml-1.5 opacity-60">${r.platforms.length}</span></button>`,
+            }">${esc(r.version)}${r.channel !== "stable" ? `<span class="ml-1.5 opacity-60">${esc(r.channel)}</span>` : ""}<span class="ml-1.5 opacity-60">${r.platforms.length}</span></button>`,
           )
           .join("")}
         <button data-v="new" class="rounded-full border border-dashed px-3 py-1 text-xs transition ${
@@ -209,9 +214,9 @@
             isNew
               ? `<div class="flex items-center gap-3"><label class="text-sm text-stone-600 dark:text-stone-400" for="ver">Version</label>
                  <input class="field !w-36 font-mono" id="ver" placeholder="0.2.0" value="${esc(S.ver)}" />
-                 <span id="ver-parts" class="flex items-end gap-2">${verParts(S.ver)}</span></div>`
-              : `<div><span class="font-mono text-lg font-medium">${esc(rel.version)}</span>
-                 <span class="ml-2 text-sm text-stone-500">published ${when(rel.pub_date)}</span></div>
+                 <span id="ver-parts" class="flex items-end gap-2">${verParts(S.ver)}</span>${channelSelect()}</div>`
+              : `<div class="flex items-center gap-3"><span class="font-mono text-lg font-medium">${esc(rel.version)}</span>
+                 <span class="text-sm text-stone-500">published ${when(rel.pub_date)}</span>${channelSelect()}</div>
                  <button class="btn-danger" id="unpublish" type="button"><i class="iconoir-bin-minus-in"></i>Unpublish</button>`
           }
         </div>
@@ -281,6 +286,7 @@
     };
     $("publish").onclick = publish;
     $("notes").oninput = () => (S.notes = $("notes").value);
+    $("channel").onchange = () => (S.channel = $("channel").value);
     if ($("ver")) {
       $("ver").oninput = () => {
         S.ver = $("ver").value;
@@ -301,6 +307,48 @@
       status(err.message, "bad");
     }
   };
+
+  // The channel a version is published to. On an existing release the
+  // change goes out with the next publish, which "Save notes" also is.
+  const channelSelect = () =>
+    `<select class="field !w-auto !py-1.5 font-mono text-xs" id="channel" title="Release channel">${CHANNELS.map(
+      (c) => `<option${c === S.channel ? " selected" : ""}>${c}</option>`,
+    ).join("")}</select>`;
+
+  // The last 30 days of counts: update checks per day as bars, then checks
+  // and downloads per version. Counts only, which is all Herald keeps.
+  function statsPanel() {
+    const sum = (rows) => rows.reduce((n, h) => n + h.count, 0);
+    const checks = S.hits.filter((h) => h.kind === "check");
+    const downloads = S.hits.filter((h) => h.kind === "download");
+    if (!S.hits.length) return "";
+    const days = [...new Set(S.hits.map((h) => h.day))].sort();
+    const perDay = days.map((d) => sum(checks.filter((h) => h.day === d)));
+    const max = Math.max(1, ...perDay);
+    const week = days.slice(-7);
+    const versions = [...new Set(S.hits.map((h) => h.version))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    const rows = versions
+      .map((v) => {
+        const label = v ? `<span class="font-mono">${esc(v)}</span>` : `<span class="text-stone-400">version not reported</span>`;
+        const recent = sum(checks.filter((h) => h.version === v && week.includes(h.day)));
+        const got = sum(downloads.filter((h) => h.version === v));
+        return `<tr class="border-t border-line dark:border-line-dark"><td class="py-1.5 pr-4">${label}</td>
+          <td class="py-1.5 pr-4 text-right tabular-nums">${recent}</td><td class="py-1.5 text-right tabular-nums">${got}</td></tr>`;
+      })
+      .join("");
+    return `<div class="card mb-8 p-5">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-sm font-semibold text-stone-600 dark:text-stone-400">Last 30 days</h3>
+        <span class="text-xs text-stone-500">${sum(checks)} update checks, ${sum(downloads)} downloads. Counts only, no addresses.</span>
+      </div>
+      <div class="mt-3 flex h-12 items-end gap-px" title="Update checks per day">${perDay
+        .map((n, i) => `<span class="flex-1 rounded-sm bg-seal/70 dark:bg-seal-bright/70" style="height:${Math.max(2, Math.round((n / max) * 100))}%" title="${days[i]}: ${n}"></span>`)
+        .join("")}</div>
+      <table class="mt-4 w-full text-sm"><thead><tr class="text-xs text-stone-500"><th class="pb-1 text-left font-normal">Version in use</th>
+        <th class="pb-1 text-right font-normal">Checks, 7 days</th><th class="pb-1 text-right font-normal">Downloads, 30 days</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+    </div>`;
+  }
 
   // Major, minor and patch as the server will store them, so "v1.2" reads
   // back as 1 . 2 . 0 while it is typed. Nothing until the input parses.
@@ -435,7 +483,7 @@
         if (r.sig) artifacts[r.platform].signature = (await r.sig.text()).trim();
       }
       status("Publishing");
-      await api("POST", `/${S.slug}/releases`, { version, notes: S.notes, artifacts });
+      await api("POST", `/${S.slug}/releases`, { version, notes: S.notes, channel: S.channel, artifacts });
       S.queue = [];
       await loadApps();
       S.versions = (await api("GET", `/${S.slug}/releases`)).releases;
