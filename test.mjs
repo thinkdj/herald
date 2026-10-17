@@ -162,6 +162,13 @@ for (const id of ["apps", "new-app", "app-form", "app-slug", "app-name", "main",
   assert.ok(admin.includes(`id="${id}"`), `the admin page must have #${id}`);
 }
 assert.ok(tpl("login.html").includes('name="password"'), "the login form must post a password");
+// The layout wraps the login and publishing pages, so every script it loads
+// has to come from Herald itself, and every outside stylesheet that can be
+// pinned to a hash has to be.
+const shell = tpl("layout.html");
+assert.ok(!/<script[^>]+src="(https?:)?\/\//.test(shell), "no third party script in the layout");
+assert.ok(readFileSync(join(here, "vendor", "tailwind-3.4.17.txt"), "utf8").length > 100000, "the vendored Tailwind build must be present");
+assert.match(shell, /iconoir@v[\d.]+\/css\/iconoir\.css"\s+integrity="sha384-/, "Iconoir is pinned to a release and a hash");
 
 // ---------------------------------------------------------------- auth
 

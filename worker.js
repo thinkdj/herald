@@ -52,9 +52,13 @@ import appCardTpl from "./templates/app-card.html";
 import loginTpl from "./templates/login.html";
 import adminTpl from "./templates/admin.html";
 import appTpl from "./templates/app.html";
+// Tailwind's play build, as a text module for the same reason the templates
+// are: wrangler bundles .txt as text with no rule to add.
+import tailwind from "./vendor/tailwind-3.4.17.txt";
+
 
 // Path prefixes Herald owns, so none of them can also be an app slug.
-const RESERVED = new Set(["files", "admin", "login", "logout", "favicon.ico", "robots.txt"]);
+const RESERVED = new Set(["files", "admin", "login", "logout", "demo", "favicon.ico", "robots.txt"]);
 
 // Checked once for every write, not per route. Upload and publish both turn a
 // slug into a durable name, an R2 key prefix and a database row, and letting
@@ -361,6 +365,16 @@ export default {
 
     // Artifact bytes and the pages Herald owns, checked before anything is
     // treated as an app slug.
+    // The name carries the version and a slug cannot contain a dot, so this
+    // can be cached for good and never shadows an app.
+    if (seg[0] === "tailwind-3.4.17.js" && seg.length === 1) {
+      return new Response(tailwind, {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
     if (seg[0] === "files") {
       if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
       return serveFile(req, env, seg.slice(1).join("/"));

@@ -35,8 +35,9 @@ worker.js              routing, and only routing
 lib/auth.js            password check, signed session cookie, bearer token
 lib/db.js              every D1 query
 lib/feeds.js           the dialects, plus version and platform rules. all pure
-lib/render.js          {{placeholder}} templating
+lib/render.js          {{placeholder}} templating, and the page security headers
 templates/*.html       real HTML files, imported as text modules
+vendor/                the Tailwind play build, a .txt so it imports as text too
 schema.sql
 test.mjs
 ```
@@ -45,11 +46,17 @@ Templates are `.html` on disk because wrangler already treats `**/*.html` as a
 text module. No build step, no framework, and no HTML trapped inside a
 JavaScript string.
 
-Styling is Tailwind's play CDN with Iconoir icons and a light or dark theme
+Styling is Tailwind's play build with Iconoir icons and a light or dark theme
 remembered per browser, for the same reason: `wrangler deploy` is the
-whole pipeline. That does put a third party script on a page that handles a
-password, so if that trade stops being acceptable, compile a stylesheet and
-serve it from R2 instead.
+whole pipeline. The Tailwind script is vendored in `vendor/` and served by the
+worker itself, because the publishing page holds a session that can ship
+releases and no third party gets to run script in it. Iconoir's stylesheet
+still comes from a CDN, pinned to a release and to its hash. To move to a newer
+Tailwind, save the new build next to the old one and change the file name in
+`worker.js` and `templates/layout.html`.
+
+Every page is sent with a Content-Security-Policy that allows Herald's own
+scripts, the two stylesheet hosts, and nothing else, and that forbids framing.
 
 ## Routes
 

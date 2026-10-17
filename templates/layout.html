@@ -16,14 +16,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/iconoir-icons/iconoir@main/css/iconoir.css" />
+    <!-- Pinned to a release and to its hash, so the CDN cannot change what loads. -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/iconoir-icons/iconoir@v7.12.1/css/iconoir.css"
+      integrity="sha384-luECWXGw+Rk0LDPKZ8m2vuzYJnGiJfFabF16BAqKVf7rdp1/jvaViZ+BFXFuaD5H"
+      crossorigin="anonymous"
+    />
     <!--
-      Tailwind's play CDN: no build step, which is the whole reason the worker
-      can be deployed with `wrangler deploy` and nothing else. It costs a
-      third party script tag on a page that handles a password, so if that
-      trade stops being acceptable, compile a stylesheet and serve it from R2.
+      Tailwind's play build: no build step, which is the whole reason the worker
+      can be deployed with `wrangler deploy` and nothing else. It is served
+      from vendor/ by the worker itself rather than from the CDN, because this
+      page holds a session that can publish releases and no third party gets
+      to run script in it. The CDN sends no CORS header, so a hash could not
+      pin it there.
     -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/tailwind-3.4.17.js"></script>
     <script>
       tailwind.config = {
         darkMode: "class",
