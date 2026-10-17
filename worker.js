@@ -57,6 +57,7 @@ import appTpl from "./templates/app.html";
 // Tailwind's play build, as a text module for the same reason the templates
 // are: wrangler bundles .txt as text with no rule to add.
 import tailwind from "./vendor/tailwind-3.4.17.txt";
+import mark from "./assets/herald.svg";
 
 // The query layer. Each call goes to D1 or to the demo store depending on the
 // handle it is given, so no route knows which one it is talking to.
@@ -407,6 +408,11 @@ export default {
           "content-type": "text/javascript; charset=utf-8",
           "cache-control": "public, max-age=31536000, immutable",
         },
+      });
+    }
+    if (seg[0] === "herald.svg" && seg.length === 1) {
+      return new Response(mark, {
+        headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" },
       });
     }
     if (seg[0] === "files") {

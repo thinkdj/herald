@@ -4,9 +4,12 @@
   "main": "./worker.js",
   "compatibility_date": "2026-08-30",
 
-  // No module rules needed: wrangler already treats **/*.html as a Text
-  // module, which is what lets templates stay real .html files that an editor
-  // can highlight, imported with `import layout from "./templates/layout.html"`.
+  // Text modules: templates stay real .html files an editor can highlight,
+  // imported with `import layout from "./templates/layout.html"`, and the mark
+  // is served from the same .svg the logo page uses. Wrangler covers .txt and
+  // .html on its own, but an explicit rule replaces that default, so both are
+  // listed here beside .svg.
+  "rules": [{ "type": "Text", "globs": ["**/*.txt", "**/*.html", "**/*.svg"], "fallthrough": true }],
 
   // The top level is the local development target: `wrangler dev` uses it, it
   // claims no custom domain, and its resources are the ones the local
