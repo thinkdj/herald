@@ -62,7 +62,7 @@ serve it from R2 instead.
 | `PUT /:slug` | Create an app, rename it, or toggle it. Body `{"name": "...", "unlisted": true}`, either field optional |
 | `DELETE /:slug` | Delete an app and every release |
 | `PUT /:slug/upload/:version/:file` | Store an artifact in R2, returns its public URL |
-| `GET /files/:slug/:version/:file` | The stored artifact. Public, immutable, range requests |
+| `GET /files/:slug/:version/:file` | The stored artifact. Public, revalidated by ETag, range requests |
 | `GET /:slug/latest.json` | Tauri feed, all platforms |
 | `GET /:slug/:target/:arch/:version` | Tauri templated feed, `204` when the client is current |
 | `GET /:slug/latest.yml` | electron-updater, Windows. Also `latest-mac.yml`, `latest-linux.yml` |
@@ -135,8 +135,10 @@ password or a bearer token is throttled either way.
   feed that does not exist at all is a `404`.
 - The index links only to feeds an app actually has, so it never advertises a
   URL that 404s.
-- R2 keys are `slug/version/filename`, so an object at a given key never
-  changes and `/files/` is served `immutable` with a one year max-age.
+- R2 keys are `slug/version/filename`, and republishing a version overwrites
+  its key. So `/files/` is served `no-cache`: a cache asks before reusing a
+  download and gets a `304` when nothing changed, rather than handing out an
+  old installer under a new signature.
 - Deleting a release removes its rows, not its R2 objects. That is deliberate:
   installed clients hold signed URLs pointing at them. Prune the bucket by hand
   when you are sure nothing is still on them.

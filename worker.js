@@ -224,10 +224,12 @@ async function admin(env) {
   });
 }
 
-// Serve an uploaded artifact. Public and unauthenticated. Keys carry the
-// version, so an object at a given key never changes and can be cached
-// forever. `onlyIf` handles conditional requests and `range` a resumed
-// download, both straight from the request headers.
+// Serve an uploaded artifact. Public and unauthenticated. A republished
+// version overwrites its key, so the bytes behind a URL can change and a
+// cache has to ask before reusing them: a stale installer under a fresh
+// signature is an update that fails to verify. `onlyIf` answers that check
+// with a 304, and `range` a resumed download, both straight from the request
+// headers.
 async function serveFile(req, env, key) {
   if (!env.BUCKET) return json({ error: "no bucket bound" }, 501, 0);
   const object = await env.BUCKET.get(key, { range: req.headers, onlyIf: req.headers });
@@ -236,7 +238,7 @@ async function serveFile(req, env, key) {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
-  headers.set("cache-control", "public, max-age=31536000, immutable");
+  headers.set("cache-control", "public, no-cache");
   headers.set("content-disposition", `attachment; filename="${key.split("/").pop()}"`);
   // A body-less object means the conditional request matched: nothing to send.
   if (!object.body) return new Response(null, { status: 304, headers });
