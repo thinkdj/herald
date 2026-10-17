@@ -150,7 +150,8 @@
           };
           d.showModal();
         });
-      document.querySelector('form[action="/logout"]')?.addEventListener("submit", async (e) => {
+      // The header's sign out asks first. The demo bar's exit is the same form, without the question.
+      document.querySelector('header form[action="/logout"]')?.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (await confirmDialog("Sign out?", "You will need the password to publish again.", "Sign out")) e.target.submit();
       });

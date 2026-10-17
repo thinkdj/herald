@@ -31,7 +31,7 @@
 // Artifacts are either uploaded into Herald's own R2 bucket or hosted somewhere
 // else and referenced by URL. Both can be mixed, per app and per platform.
 
-import { authorized, checkCredentials, clearCookie, failureDelay, sessionCookie } from "./lib/auth.js";
+import { authorized, checkCredentials, clearCookie, failureDelay, secretOk, sessionCookie, MIN_SECRET_LENGTH } from "./lib/auth.js";
 import * as d1 from "./lib/db.js";
 import * as demo from "./lib/demo.js";
 import {
@@ -94,11 +94,12 @@ const yaml = (body) =>
     },
   });
 
-// True when this client IP has used up the given limiter. Login attempts and
-// admin traffic are both throttled before credentials are looked at, so
-// guessing a password or a bearer token is slow whichever door is tried.
-async function throttled(limiter, req) {
-  const key = req.headers.get("cf-connecting-ip") ?? "local";
+// True when the given limiter is used up for this client IP, or for the
+// fixed key when one is passed. Login attempts and admin traffic are both
+// throttled before credentials are looked at, so guessing a password or a
+// bearer token is slow whichever door is tried.
+const clientIp = (req) => req.headers.get("cf-connecting-ip") ?? "local";
+async function throttled(limiter, req, key = clientIp(req)) {
   return !(await limiter.limit({ key })).success;
 }
 
@@ -131,7 +132,7 @@ const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-be
     <span class="text-amber-900/40 dark:text-amber-200/40">|</span>
     <a class="font-medium hover:underline" href="/admin">Admin</a>
   </span>
-  <a class="font-medium hover:underline" href="/logout">Exit</a>
+  <form method="post" action="/logout"><button class="font-medium hover:underline">Exit</button></form>
 </div>`;
 
 // The pieces of the layout every page fills in: the nav for who is looking,
@@ -241,12 +242,21 @@ async function login(req, env, url, ui) {
       status,
       error: `<p class="rounded-md bg-seal-soft px-3 py-2 text-sm text-seal dark:bg-seal-bright/10 dark:text-seal-bright">${message}</p>`,
     });
-  if (await throttled(env.LOGIN_LIMIT, req)) {
+  // Per IP first, then for everyone together, so guesses spread over many
+  // addresses still meet a ceiling. A refused attempt is logged with its
+  // address and nothing else, so an attack shows up in the Worker's logs
+  // without the log ever holding a password typed into the wrong box.
+  if ((await throttled(env.LOGIN_LIMIT, req)) || (await throttled(env.LOGIN_GLOBAL, req, "all"))) {
+    console.warn(`login throttled: ${clientIp(req)}`);
     return fail(429, "Too many attempts. Wait a minute and try again.");
   }
+  if (!secretOk(env)) {
+    return fail(500, `SESSION_SECRET must be at least ${MIN_SECRET_LENGTH} characters on this deployment.`);
+  }
   const form = await req.formData();
-  if (!checkCredentials(env, form.get("username"), form.get("password"))) {
+  if (!(await checkCredentials(env, form.get("username"), form.get("password")))) {
     await failureDelay();
+    console.warn(`login failed: ${clientIp(req)}`);
     return fail(
       401,
       env.ADMIN_PASSWORD ? "Wrong username or password." : "No credentials are configured on this deployment.",
@@ -435,7 +445,11 @@ export default {
     if (seg[0] === "login" && seg.length === 1 && (method === "GET" || method === "POST")) {
       return login(req, env, url, chrome(false, demoMode));
     }
-    if (seg[0] === "logout" && seg.length === 1) return redirect("/", clearCookie, demo.clearDemoCookie);
+    // POST only: a plain link must not be able to end the session.
+    if (seg[0] === "logout" && seg.length === 1) {
+      if (method !== "POST") return json({ error: "method not allowed" }, 405, 0);
+      return redirect("/", clearCookie, demo.clearDemoCookie);
+    }
     if (seg[0] === "demo" && seg.length === 1) {
       if (!env.DEMO) return json({ error: "not found" }, 404, 0);
       return redirect("/admin", demo.demoCookie);

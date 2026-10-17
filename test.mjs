@@ -19,7 +19,7 @@ import {
   PLATFORMS,
 } from "./lib/feeds.js";
 import { esc, render } from "./lib/render.js";
-import { checkCredentials, hasSession, sessionCookie, timingSafeEqual } from "./lib/auth.js";
+import { checkCredentials, hashPassword, hasSession, secretOk, sessionCookie, timingSafeEqual } from "./lib/auth.js";
 import * as d1 from "./lib/db.js";
 import * as demo from "./lib/demo.js";
 
@@ -189,12 +189,25 @@ assert.equal(timingSafeEqual("abc", "abcd"), false, "length mismatch is not equa
 assert.equal(timingSafeEqual(undefined, ""), true, "nullish coerces to empty, not to a match");
 
 // A deployment with no credentials configured must be locked, not open.
-assert.equal(checkCredentials({}, "admin", "admin"), false);
-assert.equal(checkCredentials({ ADMIN_USER: "a" }, "a", ""), false, "no password means no entry");
-const env = { ADMIN_USER: "ops", ADMIN_PASSWORD: "s3cret", SESSION_SECRET: "signing-key" };
-assert.equal(checkCredentials(env, "ops", "s3cret"), true);
-assert.equal(checkCredentials(env, "ops", "wrong"), false);
-assert.equal(checkCredentials(env, "nope", "s3cret"), false);
+assert.equal(await checkCredentials({}, "admin", "admin"), false);
+assert.equal(await checkCredentials({ ADMIN_USER: "a" }, "a", ""), false, "no password means no entry");
+const env = { ADMIN_USER: "ops", ADMIN_PASSWORD: "s3cret", SESSION_SECRET: "signing-key-signing-key-signing-key" };
+assert.equal(await checkCredentials(env, "ops", "s3cret"), true);
+assert.equal(await checkCredentials(env, "ops", "wrong"), false);
+assert.equal(await checkCredentials(env, "nope", "s3cret"), false);
+
+// The stored password may be a PBKDF2 hash instead of the plain text.
+const hashed = await hashPassword("s3cret", 1000);
+assert.match(hashed, /^pbkdf2-sha256\$1000\$[0-9a-f]{32}\$[0-9a-f]{64}$/);
+assert.notEqual(hashed, await hashPassword("s3cret", 1000), "a fresh salt every time");
+assert.equal(await checkCredentials({ ...env, ADMIN_PASSWORD: hashed }, "ops", "s3cret"), true);
+assert.equal(await checkCredentials({ ...env, ADMIN_PASSWORD: hashed }, "ops", "s3cret "), false);
+assert.equal(await checkCredentials({ ...env, ADMIN_PASSWORD: hashed }, "ops", hashed), false, "the hash itself is not the password");
+
+// A short signing secret is refused rather than used.
+assert.equal(secretOk({ SESSION_SECRET: "short" }), false);
+assert.equal(secretOk(env), true);
+await assert.rejects(sessionCookie({ SESSION_SECRET: "short" }, new URL("https://herald.example/login")));
 
 // A session cookie is signed and self expiring, so it needs no server state
 // and cannot be extended by editing it.
@@ -218,6 +231,16 @@ assert.equal(
   "an extended expiry invalidates the signature",
 );
 assert.equal(await hasSession(withCookie("herald_session=1.abc"), env), false, "expired");
+assert.equal(await hasSession(withCookie(cookie), { SESSION_SECRET: "short" }), false, "a short secret validates nothing");
+assert.equal(
+  await hasSession(new Request("https://staging.example/admin", { headers: { cookie } }), env),
+  false,
+  "a cookie is bound to the host it was minted for",
+);
+assert.equal(await hasSession(withCookie(`xherald_session=${cookie.split("=")[1]}`), env), false, "a lookalike cookie name is not the cookie");
+
+// Signing out is a POST, in the header and in the demo bar.
+assert.ok(!/href="\/logout"/.test(readFileSync(join(here, "worker.js"), "utf8")), "no GET link to /logout");
 
 // ---------------------------------------------------------------- demo
 

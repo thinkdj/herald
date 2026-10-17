@@ -97,13 +97,32 @@ Three secrets, no user table:
 
 | Secret | For |
 |--------|-----|
-| `ADMIN_USER`, `ADMIN_PASSWORD` | signing in at `/login` |
-| `SESSION_SECRET` | signing the session cookie. Any long random string |
+| `ADMIN_USER`, `ADMIN_PASSWORD` | signing in at `/login`. The password itself, or its hash from `node herald/hash-password.mjs` |
+| `SESSION_SECRET` | signing the session cookie. At least 32 random characters, or the login refuses to sign |
 | `ADMIN_TOKEN` | non-interactive publishing from CI |
 
 The session cookie carries its own expiry and HMAC signature, so there is no
 server side session store and editing the cookie to extend it invalidates it.
 It is `HttpOnly`, `SameSite=Lax`, and `Secure` over https. Twelve hours.
+The signature covers the host, so a cookie from staging is worthless on
+production even if both were given the same secret. There is no per session
+revocation: a cookie copied off a machine is good until it expires, and
+rotating `SESSION_SECRET` is what ends every session at once. Signing out
+is a `POST`, so a link on another site cannot do it.
+
+`ADMIN_PASSWORD` can hold a PBKDF2 hash instead of the password, so the
+secret store never has the plain text. The script reads from stdin to keep
+the password out of shell history:
+
+```sh
+node herald/hash-password.mjs
+# type the password, Enter, then Ctrl+D (Ctrl+Z on Windows)
+pnpm wrangler secret put ADMIN_PASSWORD --config herald/wrangler.jsonc --env production
+# paste the pbkdf2-sha256$... line
+```
+
+A failed or throttled sign in is logged with the client address and nothing
+else, so an attack is visible in the Worker's logs.
 
 A deployment with no `ADMIN_PASSWORD` set is locked, not open, and the login
 page says so. Generate the password and the session secret rather than choosing
@@ -113,7 +132,8 @@ them:
 openssl rand -base64 32
 ```
 
-Login and admin traffic is rate limited per client IP with Cloudflare's
+Login and admin traffic is rate limited per client IP, and login once more
+for all clients together, with Cloudflare's
 [rate limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
 declared in `wrangler.jsonc` and simulated by `wrangler dev`. Over the limit
 answers `429`. Both apply before credentials are checked, so guessing a
@@ -121,7 +141,8 @@ password or a bearer token is throttled either way.
 
 | Binding | Routes | Limit |
 |---------|--------|-------|
-| `LOGIN_LIMIT` | `POST /login` | 5 per minute |
+| `LOGIN_LIMIT` | `POST /login` | 5 per minute per address |
+| `LOGIN_GLOBAL` | `POST /login` | 30 per minute for everyone together |
 | `ADMIN_LIMIT` | `GET /admin`, upload, publish, unpublish | 60 per minute |
 
 ## Behaviour worth knowing
@@ -209,7 +230,8 @@ Local development needs no secrets on disk:
 pnpm wrangler d1 execute herald-dev --local \
   --config herald/wrangler.jsonc --file herald/schema.sql
 pnpm wrangler dev --config herald/wrangler.jsonc --local \
-  --var ADMIN_USER:ops --var ADMIN_PASSWORD:dev --var SESSION_SECRET:devsign
+  --var ADMIN_USER:ops --var ADMIN_PASSWORD:dev \
+  --var SESSION_SECRET:devsign-devsign-devsign-devsign-devsign
 ```
 
 ## Demo mode
