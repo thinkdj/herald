@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Herald Logo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" href="herald.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --seal: #B42318;
+      --seal-soft: #FBE9E7;
+      --seal-bright: #F0705E;
+      --paper: #F4F4F1;
+      --card: #FFFFFF;
+      --line: #E4E4DF;
+      --ink: #1C1917;
+      --muted: #78716C;
+      --dark: #121212;
+      --card-dark: #1B1B1B;
+      --line-dark: #2C2C2C;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --paper: #121212; --card: #1B1B1B; --line: #2C2C2C; --ink: #F5F5F4; --muted: #A8A29E;
+        --seal: #F0705E; --seal-soft: rgba(240, 112, 94, 0.12);
+      }
+    }
+    :root[data-theme="dark"] {
+      --paper: #121212; --card: #1B1B1B; --line: #2C2C2C; --ink: #F5F5F4; --muted: #A8A29E;
+      --seal: #F0705E; --seal-soft: rgba(240, 112, 94, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html { color-scheme: light dark; }
+    body {
+      margin: 0; background: var(--paper); color: var(--ink);
+      font-family: "Instrument Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1040px; margin: 0 auto; padding: 56px 16px 96px; }
+    h1, h2 { font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+    h2 { font-size: 15px; color: var(--muted); font-weight: 500; letter-spacing: 0; text-transform: uppercase; font-size: 12px; margin-bottom: 14px; }
+    section { margin-top: 56px; }
+    p { color: var(--muted); line-height: 1.5; margin: 0; }
+    code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
+
+    .hero { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 48px 0 8px; }
+    .lockup { display: inline-flex; align-items: center; gap: 0.32em; color: var(--ink); font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+    .lockup svg { width: 1.1em; height: 1.1em; color: var(--seal); flex: none; }
+    .hero .lockup { font-size: 88px; }
+    .hero p { font-size: 18px; max-width: 34ch; }
+
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .tile {
+      aspect-ratio: 1; border-radius: 14px; border: 1px solid var(--line); display: grid; place-items: center;
+      position: relative; background: var(--card); color: var(--seal);
+    }
+    .tile svg { width: 44%; height: 44%; }
+    .tile .cap { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: inherit; opacity: 0.7; }
+    .tile.seal { background: #B42318; color: #fff; border-color: transparent; }
+    .tile.dark { background: #121212; color: #F0705E; border-color: #2C2C2C; }
+    .tile.mono { background: #F4F4F1; color: #1C1917; border-color: #E4E4DF; }
+    .tile.mono .cap { color: #78716C; }
+
+    .sizes { display: flex; align-items: flex-end; gap: 36px; flex-wrap: wrap; padding: 28px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--seal); }
+    .sizes figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .sizes figcaption { font-size: 12px; color: var(--muted); font-family: "JetBrains Mono", monospace; }
+
+    .lockups { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+    .lockups > div { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 40px 32px; display: grid; place-items: center; }
+    .lockups .lockup { font-size: 44px; }
+    .lockup.stack { flex-direction: column; gap: 0.3em; }
+    .lockup.stack svg { width: 1.6em; height: 1.6em; }
+
+    .icons { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+    .app { width: 96px; height: 96px; border-radius: 22px; background: #B42318; color: #fff; display: grid; place-items: center; box-shadow: 0 10px 30px rgba(180, 35, 24, 0.25); }
+    .app svg { width: 60%; height: 60%; }
+    .app.light { background: #fff; color: #B42318; box-shadow: 0 10px 30px rgba(0,0,0,0.12); }
+    .app.ink { background: #1C1917; color: #F0705E; }
+    .app.small { width: 48px; height: 48px; border-radius: 12px; }
+    .app.tiny { width: 32px; height: 32px; border-radius: 8px; }
+    .tab { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px 10px 0 0; background: var(--card); border: 1px solid var(--line); border-bottom: 0; font-size: 13px; }
+    .tab svg { width: 16px; height: 16px; color: var(--seal); }
+
+    .swatches { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .swatch { border-radius: 12px; border: 1px solid var(--line); overflow: hidden; background: var(--card); }
+    .swatch i { display: block; height: 72px; }
+    .swatch div { padding: 10px 12px; font-size: 13px; }
+    .swatch code { color: var(--muted); display: block; margin-top: 2px; }
+
+    .clear { display: grid; place-items: center; padding: 36px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+    .clear .box { position: relative; padding: 48px; outline: 1px dashed var(--seal-bright); color: var(--seal); }
+    .clear .box svg { width: 96px; height: 96px; display: block; }
+    .clear .box::before, .clear .box::after { content: ""; position: absolute; inset: 48px; outline: 1px dashed var(--line); pointer-events: none; }
+    .clear .box::after { inset: 0; outline: 0; }
+
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; padding: 9px 14px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: none; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+    .btn.primary { background: #B42318; color: #fff; border-color: transparent; }
+    .btn.primary:hover { background: #9a1d13; }
+    pre { margin: 14px 0 0; padding: 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); overflow: auto; font-size: 12px; line-height: 1.5; color: var(--muted); }
+    .top { display: flex; justify-content: space-between; align-items: center; }
+    .top .btn { padding: 6px 10px; font-size: 13px; }
+    @media (max-width: 640px) {
+      .hero .lockup { font-size: 56px; }
+      .lockups { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- The mark, once. Everything on the page is a <use> of it, so the file next to this page is the only source. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="mark" viewBox="0 0 64 64">
+      <path d="M12 46 H52 V56 H12 Z" fill-opacity="0.78"/>
+      <path d="M16 8 H24 V13 H28 V8 H36 V13 H40 V8 H48 V20 H45 L46.5 46 H17.5 L19 20 H16 Z"/>
+    </symbol>
+    <symbol id="x-trumpet" viewBox="0 0 64 64">
+      <g transform="translate(1 12.7) rotate(-15 32 32)">
+        <path d="M31 20 H44 V37.3 L37.5 33 L31 37.3 Z" fill-opacity="0.78"/>
+        <path d="M8.25 17 H44 C54 17 58 13.5 60 8 C62.5 7 62.5 31.5 60 30.5 C58 25 54 21.5 44 21.5 H8.25 A2.25 2.25 0 0 1 8.25 17 Z"/>
+      </g>
+    </symbol>
+  </svg>
+
+  <main>
+    <div class="top">
+      <span class="lockup" style="font-size:20px"><svg fill="currentColor"><use href="#mark"/></svg>Herald</span>
+      <button class="btn" id="theme" type="button">Switch theme</button>
+    </div>
+
+    <div class="hero">
+      <span class="lockup"><svg fill="currentColor"><use href="#mark"/></svg>Herald</span>
+      <p>A tower, the kind a herald speaks from. Three merlons, a body that tapers to the ground, a plinth below. Two shapes, two tones of one colour, legible from a favicon to a billboard.</p>
+      <div class="actions">
+        <a class="btn primary" href="herald.svg" download="herald.svg">Download herald.svg</a>
+        <button class="btn" id="copy" type="button">Copy SVG</button>
+      </div>
+    </div>
+
+    <section>
+      <h2>The mark</h2>
+      <div class="grid">
+        <div class="tile"><svg fill="currentColor"><use href="#mark"/></svg><span class="cap">Seal on paper</span></div>
+        <div class="tile seal"><svg fill="currentColor"><use href="#mark"/></svg><span class="cap">Paper on seal</span></div>
+        <div class="tile dark"><svg fill="currentColor"><use href="#mark"/></svg><span class="cap">Bright on dark</span></div>
+        <div class="tile mono"><svg fill="currentColor"><use href="#mark"/></svg><span class="cap">Mono</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Sizes</h2>
+      <div class="sizes">
+        <figure><svg width="16" height="16" fill="currentColor"><use href="#mark"/></svg><figcaption>16</figcaption></figure>
+        <figure><svg width="24" height="24" fill="currentColor"><use href="#mark"/></svg><figcaption>24</figcaption></figure>
+        <figure><svg width="32" height="32" fill="currentColor"><use href="#mark"/></svg><figcaption>32</figcaption></figure>
+        <figure><svg width="48" height="48" fill="currentColor"><use href="#mark"/></svg><figcaption>48</figcaption></figure>
+        <figure><svg width="64" height="64" fill="currentColor"><use href="#mark"/></svg><figcaption>64</figcaption></figure>
+        <figure><svg width="128" height="128" fill="currentColor"><use href="#mark"/></svg><figcaption>128</figcaption></figure>
+      </div>
+    </section>
+
+    <section>
+      <h2>Lockups</h2>
+      <div class="lockups">
+        <div><span class="lockup"><svg fill="currentColor"><use href="#mark"/></svg>Herald</span></div>
+        <div><span class="lockup stack"><svg fill="currentColor"><use href="#mark"/></svg>Herald</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Icons and tabs</h2>
+      <div class="icons">
+        <div class="app"><svg fill="currentColor"><use href="#mark"/></svg></div>
+        <div class="app light"><svg fill="currentColor"><use href="#mark"/></svg></div>
+        <div class="app ink"><svg fill="currentColor"><use href="#mark"/></svg></div>
+        <div class="app small"><svg fill="currentColor"><use href="#mark"/></svg></div>
+        <div class="app tiny"><svg fill="currentColor"><use href="#mark"/></svg></div>
+        <span class="tab"><svg fill="currentColor"><use href="#mark"/></svg>Herald</span>
+        <span class="tab"><svg fill="currentColor"><use href="#mark"/></svg>ctx on Herald</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Clear space</h2>
+      <div class="clear">
+        <div class="box"><svg fill="currentColor"><use href="#mark"/></svg></div>
+      </div>
+      <p style="margin-top:12px;font-size:13px">Keep half the mark's width clear on every side. The plinth is the same colour at 78% opacity, so the pair works on any background. Do not give it a second hue.</p>
+    </section>
+
+    <section>
+      <h2>Colour</h2>
+      <div class="swatches">
+        <div class="swatch"><i style="background:#B42318"></i><div>Seal<code>#B42318</code></div></div>
+        <div class="swatch"><i style="background:#F0705E"></i><div>Seal bright, on dark<code>#F0705E</code></div></div>
+        <div class="swatch"><i style="background:#FBE9E7"></i><div>Seal soft<code>#FBE9E7</code></div></div>
+        <div class="swatch"><i style="background:#F4F4F1;border-bottom:1px solid #E4E4DF"></i><div>Paper<code>#F4F4F1</code></div></div>
+        <div class="swatch"><i style="background:#121212"></i><div>Dark<code>#121212</code></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Use it</h2>
+      <p style="font-size:13px">The file sets <code>fill="currentColor"</code>, so an inline copy takes the text colour around it, plinth included. Wordmark is Instrument Sans 600, tracking -0.03em, mark at 1.1em beside it.</p>
+      <pre id="src"></pre>
+    </section>
+    <section>
+      <h2>Exploration: the trumpet</h2>
+      <div class="grid">
+        <div class="tile"><svg fill="currentColor"><use href="#x-trumpet"/></svg><span class="cap">Seal on paper</span></div>
+        <div class="tile seal"><svg fill="currentColor"><use href="#x-trumpet"/></svg><span class="cap">Paper on seal</span></div>
+        <div class="tile dark"><svg fill="currentColor"><use href="#x-trumpet"/></svg><span class="cap">Bright on dark</span></div>
+        <div class="tile mono"><svg fill="currentColor"><use href="#x-trumpet"/></svg><span class="cap">Mono</span></div>
+      </div>
+      <div class="sizes" style="margin-top:12px">
+        <figure><svg width="16" height="16" fill="currentColor"><use href="#x-trumpet"/></svg><figcaption>16</figcaption></figure>
+        <figure><svg width="24" height="24" fill="currentColor"><use href="#x-trumpet"/></svg><figcaption>24</figcaption></figure>
+        <figure><svg width="32" height="32" fill="currentColor"><use href="#x-trumpet"/></svg><figcaption>32</figcaption></figure>
+        <figure><svg width="48" height="48" fill="currentColor"><use href="#x-trumpet"/></svg><figcaption>48</figcaption></figure>
+        <figure><svg width="64" height="64" fill="currentColor"><use href="#x-trumpet"/></svg><figcaption>64</figcaption></figure>
+        <span class="lockup" style="font-size:44px;margin-left:auto"><svg fill="currentColor"><use href="#x-trumpet"/></svg>Herald</span>
+      </div>
+      <p style="margin-top:12px;font-size:13px">The earlier mark. A herald's trumpet, long and slim, with its banner hanging from it at 78%. The thing in their hand, not the place they speak from.</p>
+    </section>
+  </main>
+
+  <script>
+    const src = document.querySelector("#mark").innerHTML.trim().replace(/\n\s+/g, "\n  ");
+    const file = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="currentColor" color="#B42318" aria-label="Herald">\n  ${src}\n</svg>`;
+    document.getElementById("src").textContent = file;
+    document.getElementById("copy").onclick = async (e) => {
+      await navigator.clipboard.writeText(file);
+      e.target.textContent = "Copied";
+      setTimeout(() => (e.target.textContent = "Copy SVG"), 1200);
+    };
+    document.getElementById("theme").onclick = () => {
+      const root = document.documentElement;
+      const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = dark ? "light" : "dark";
+    };
+  </script>
+</body>
+</html>

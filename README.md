@@ -39,6 +39,7 @@ lib/render.js          {{placeholder}} templating, and the page security headers
 lib/demo.js            the same queries as db.js over demo/*.json, for /demo
 templates/*.html       real HTML files, imported as text modules
 vendor/                the Tailwind play build, a .txt so it imports as text too
+assets/herald.svg      the mark. assets/herald.logo.html shows it in every use
 schema.sql
 test.mjs
 ```
