@@ -1,0 +1,58 @@
+[
+  {
+    "release_id": 1,
+    "platform": "windows-x86_64",
+    "url": "https://herald.example/files/ctx/0.1.0/ctx_0.1.0_x64_en-US.msi",
+    "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcDg3",
+    "sha512": null,
+    "size": 3862528
+  },
+  {
+    "release_id": 2,
+    "platform": "windows-x86_64",
+    "url": "https://herald.example/files/ctx/0.1.1/ctx_0.1.1_x64_en-US.msi",
+    "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcDg4",
+    "sha512": null,
+    "size": 3870720
+  },
+  {
+    "release_id": 2,
+    "platform": "darwin-aarch64",
+    "url": "https://herald.example/files/ctx/0.1.1/ctx_aarch64.app.tar.gz",
+    "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcDg5",
+    "sha512": null,
+    "size": 5242880
+  },
+  {
+    "release_id": 3,
+    "platform": "windows-x86_64",
+    "url": "https://herald.example/files/nimbus/2.4.0/Nimbus-Setup-2.4.0.exe",
+    "signature": null,
+    "sha512": "5jxpsno5gr2x8SxNxx6o9KCmJhoZSaKqwDWgOUuTRx1nh170/ZSz1lKS/tsT9//zzVL4tbG/azAabuTGmIuH7Q==",
+    "size": 71303168
+  },
+  {
+    "release_id": 4,
+    "platform": "windows-x86_64",
+    "url": "https://herald.example/files/nimbus/2.5.0/Nimbus-Setup-2.5.0.exe",
+    "signature": null,
+    "sha512": "JVy8G7IJCPrIPf7kLPbDETdLSplhTOREk6hFlofc+7w4k+k1njBm8/vH3Hiq+kHaDBDsQvtk7H4xUTdwjOSFtA==",
+    "size": 72351744
+  },
+  {
+    "release_id": 4,
+    "platform": "darwin-universal",
+    "url": "https://herald.example/files/nimbus/2.5.0/Nimbus-2.5.0-universal.dmg",
+    "signature": null,
+    "sha512": "8y4yUE7/2BLwlf/IWXJjCaupnmAYUwbtM87CLhzfJZjsPNSMK95V9dUZW9jicPl2+HSSDalNmmbomEG7XZp8bQ==",
+    "size": 98566144
+  },
+  {
+    "release_id": 4,
+    "platform": "linux-x86_64",
+    "url": "https://herald.example/files/nimbus/2.5.0/Nimbus-2.5.0.AppImage",
+    "signature": null,
+    "sha512": "VIGsQDT/y6R1mQ2OLhGKMOAj6WABAXH4ak9aCItvImxwWjtJBq9RofYT5i63RfF6Z/4Lm5lcE0KUFScIcIJUhQ==",
+    "size": 84934656
+  }
+]

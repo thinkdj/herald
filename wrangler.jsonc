@@ -14,6 +14,10 @@
   // bindings are not inherited by environments and a bare `wrangler deploy`
   // would otherwise publish with development resources attached.
   "workers_dev": true,
+  // Answers /demo with a sandbox session over demo/*.json. Vars are not
+  // inherited either, so a deployed environment has no demo unless it sets
+  // this itself.
+  "vars": { "DEMO": "1" },
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "herald-dev" }],
   // Per client IP, per minute. Login is tight; admin and the write routes are
   // loose enough for a CI job uploading a whole release at once.

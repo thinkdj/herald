@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "app_slug": "ctx",
+    "version": "0.1.0",
+    "notes": "First public build.\nGlobal summon shortcut, the Stash, and clipboard-first delivery.",
+    "pub_date": "2026-09-02T09:30:00.000Z"
+  },
+  {
+    "id": 2,
+    "app_slug": "ctx",
+    "version": "0.1.1",
+    "notes": "Hardened delivery: a paste is only sent once the target is confirmed to be the foreground window.",
+    "pub_date": "2026-10-03T14:00:00.000Z"
+  },
+  {
+    "id": 3,
+    "app_slug": "nimbus",
+    "version": "2.4.0",
+    "notes": "Offline sync and a rewritten editor.",
+    "pub_date": "2026-09-20T08:00:00.000Z"
+  },
+  {
+    "id": 4,
+    "app_slug": "nimbus",
+    "version": "2.5.0",
+    "notes": "",
+    "pub_date": "2026-10-10T16:45:00.000Z"
+  }
+]

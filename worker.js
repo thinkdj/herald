@@ -4,6 +4,7 @@
 //
 //   GET    /                                 app index, ?format=json for JSON
 //   GET    /login, POST /login, POST /logout sign in with ADMIN_USER and ADMIN_PASSWORD
+//   GET    /demo                             a sandbox session over demo/*.json, when DEMO is set
 //   GET    /admin                            publishing UI, requires a session
 //   PUT    /:slug                            create or rename an app
 //   DELETE /:slug                            delete an app and every release
@@ -30,7 +31,8 @@
 // else and referenced by URL. Both can be mixed, per app and per platform.
 
 import { authorized, checkCredentials, clearCookie, failureDelay, sessionCookie } from "./lib/auth.js";
-import * as db from "./lib/db.js";
+import * as d1 from "./lib/db.js";
+import * as demo from "./lib/demo.js";
 import {
   ALIASES,
   CONTENT_TYPES,
@@ -56,6 +58,11 @@ import appTpl from "./templates/app.html";
 // are: wrangler bundles .txt as text with no rule to add.
 import tailwind from "./vendor/tailwind-3.4.17.txt";
 
+// The query layer. Each call goes to D1 or to the demo store depending on the
+// handle it is given, so no route knows which one it is talking to.
+const db = Object.fromEntries(
+  Object.keys(d1).map((name) => [name, (handle, ...args) => (handle?.demo ? demo : d1)[name](handle, ...args)]),
+);
 
 // Path prefixes Herald owns, so none of them can also be an app slug.
 const RESERVED = new Set(["files", "admin", "login", "logout", "demo", "favicon.ico", "robots.txt"]);
@@ -92,21 +99,34 @@ async function throttled(limiter, req) {
   return !(await limiter.limit({ key })).success;
 }
 
-const redirect = (to, cookie) =>
-  new Response(null, {
-    status: 302,
-    headers: { location: to, ...(cookie ? { "set-cookie": cookie } : {}) },
-  });
+const redirect = (to, ...cookies) => {
+  const headers = new Headers({ location: to });
+  for (const c of cookies) headers.append("set-cookie", c);
+  return new Response(null, { status: 302, headers });
+};
 
 const navLink = (href, icon, label) =>
   `<a class="icon-btn w-auto gap-1.5 px-2.5" href="${href}"><i class="${icon} text-lg"></i><span class="hidden sm:inline">${label}</span></a>`;
 // No sign in link for visitors: the public pages are for downloads, and the
 // operator knows /login.
-const navFor = (signedIn) =>
+// In demo mode the bar above the header carries the exit, so the nav keeps
+// only the Publish link.
+const navFor = (signedIn, demoMode) =>
   signedIn
     ? navLink("/admin", "iconoir-upload", "Publish") +
-      `<form method="post" action="/logout"><button class="icon-btn" title="Sign out"><i class="iconoir-log-out text-lg"></i></button></form>`
+      (demoMode
+        ? ""
+        : `<form method="post" action="/logout"><button class="icon-btn" title="Sign out"><i class="iconoir-log-out text-lg"></i></button></form>`)
     : "";
+
+const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-between border-b border-amber-200 bg-amber-100 px-5 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/15 dark:text-amber-200">
+  <span class="inline-flex items-center gap-1.5"><i class="iconoir-info-circle text-base"></i>In Demo Mode</span>
+  <a class="font-medium hover:underline" href="/logout">Exit</a>
+</div>`;
+
+// The pieces of the layout every page fills in: the nav for who is looking,
+// and the demo bar when the session is a sandbox.
+const chrome = (signedIn, demoMode) => ({ nav: navFor(signedIn, demoMode), demo: demoMode ? DEMO_BAR : "" });
 
 const OS = [
   ["windows", "Windows", "windows", "iconoir-windows"],
@@ -156,12 +176,12 @@ function appCard(a, origin) {
 
 // Public app index. Unlisted apps are left out here and in the JSON form
 // only; their own page and feeds still answer.
-async function index(env, signedIn, origin) {
+async function index(env, ui, origin) {
   const apps = (await db.appsWithLatest(env.DB)).filter((a) => !a.unlisted);
   const cards = apps.map((a) => appCard(a, origin)).join("\n");
   return page(layout, indexTpl, {
     title: "Herald",
-    nav: navFor(signedIn),
+    ...ui,
     count: apps.length === 0 ? "None registered." : `${apps.length} registered.`,
     apps: cards || `<p class="card px-5 py-8 text-center text-sm text-stone-500">Nothing published yet.</p>`,
   });
@@ -169,7 +189,7 @@ async function index(env, signedIn, origin) {
 
 // Public page for one app: the same card as the index, then every release
 // with its notes. A changelog a site can link to.
-async function appPage(env, signedIn, origin, slug) {
+async function appPage(env, ui, origin, slug) {
   const app = (await db.appsWithLatest(env.DB)).find((a) => a.slug === slug);
   if (!app) return json({ error: "not found" }, 404, 0);
   const history = (await db.releaseHistory(env.DB, slug))
@@ -187,20 +207,27 @@ async function appPage(env, signedIn, origin, slug) {
     .join("");
   return page(layout, appTpl, {
     title: `${app.name} on Herald`,
-    nav: navFor(signedIn),
+    ...ui,
     card: appCard(app, origin),
     history: history || `<li class="text-sm text-stone-500">Nothing published yet.</li>`,
   });
 }
 
-async function login(req, env, url) {
-  if (req.method === "GET") {
-    return page(layout, loginTpl, { title: "Sign in to Herald", nav: "", error: "" });
+async function login(req, env, url, ui) {
+  const vars = {
+    title: "Sign in to Herald",
+    ...ui,
+    tryDemo: env.DEMO
+      ? `<p class="mt-4 text-center text-sm text-stone-500"><a class="hover:underline" href="/demo">Or try the demo</a></p>`
+      : "",
+  };
+  // Not `=== "GET"`: a HEAD reaches here too, and has no form to read.
+  if (req.method !== "POST") {
+    return page(layout, loginTpl, { ...vars, error: "" });
   }
   const fail = (status, message) =>
     page(layout, loginTpl, {
-      title: "Sign in to Herald",
-      nav: "",
+      ...vars,
       status,
       error: `<p class="rounded-md bg-seal-soft px-3 py-2 text-sm text-seal dark:bg-seal-bright/10 dark:text-seal-bright">${message}</p>`,
     });
@@ -219,11 +246,11 @@ async function login(req, env, url) {
 }
 
 // The page boots with the app list; everything after that is fetched.
-async function admin(env) {
+async function admin(env, ui) {
   const apps = await db.appsWithLatest(env.DB);
   return page(layout, adminTpl, {
     title: "Publish",
-    nav: navFor(true),
+    ...ui,
     boot: JSON.stringify({ apps, platforms: PLATFORMS }).replace(/</g, "\\u003c"),
   });
 }
@@ -356,11 +383,18 @@ export default {
     // and link checkers probe with it, so answering 405 would look broken.
     const method = req.method === "HEAD" ? "GET" : req.method;
 
+    // A demo session is a signed in one over the in-memory store. Only when
+    // the deployment opted in, so a stray cookie on a real host does nothing.
+    const demoMode = Boolean(env.DEMO) && demo.inDemo(req);
+    if (demoMode) env = demo.demoEnv(env);
+    const signedIn = async () => demoMode || authorized(req, env);
+    const ui = async () => chrome(await signedIn(), demoMode);
+
     if (seg.length === 0) {
       if (url.searchParams.get("format") === "json") {
         return json({ apps: (await db.appsWithLatest(env.DB)).filter((a) => !a.unlisted) }, 200, 0);
       }
-      return index(env, await authorized(req, env), url.origin);
+      return index(env, await ui(), url.origin);
     }
 
     // Artifact bytes and the pages Herald owns, checked before anything is
@@ -380,16 +414,20 @@ export default {
       return serveFile(req, env, seg.slice(1).join("/"));
     }
     if (seg[0] === "login" && seg.length === 1 && (method === "GET" || method === "POST")) {
-      return login(req, env, url);
+      return login(req, env, url, chrome(false, demoMode));
     }
-    if (seg[0] === "logout" && seg.length === 1) return redirect("/", clearCookie);
+    if (seg[0] === "logout" && seg.length === 1) return redirect("/", clearCookie, demo.clearDemoCookie);
+    if (seg[0] === "demo" && seg.length === 1) {
+      if (!env.DEMO) return json({ error: "not found" }, 404, 0);
+      return redirect("/admin", demo.demoCookie);
+    }
     if (seg[0] === "admin" && seg.length === 1) {
       if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
       if (await throttled(env.ADMIN_LIMIT, req)) return json({ error: "too many requests" }, 429, 0);
-      if (!(await authorized(req, env))) return redirect("/login");
+      if (!(await signedIn())) return redirect("/login");
       // Every app, unlisted ones included: the UI needs the whole list.
       if (url.searchParams.get("format") === "json") return json({ apps: await db.appsWithLatest(env.DB) }, 200, 0);
-      return admin(env);
+      return admin(env, await ui());
     }
 
     const [slug, ...rest] = seg;
@@ -401,7 +439,7 @@ export default {
 
     if (write) {
       if (await throttled(env.ADMIN_LIMIT, req)) return json({ error: "too many requests" }, 429, 0);
-      if (!(await authorized(req, env))) return json({ error: "unauthorized" }, 401, 0);
+      if (!(await signedIn())) return json({ error: "unauthorized" }, 401, 0);
       if (!validSlug(slug)) return json({ error: `bad app slug: ${slug}` }, 400, 0);
 
       if (rest.length === 0) {
@@ -433,7 +471,7 @@ export default {
     }
     if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
 
-    if (rest.length === 0) return appPage(env, await authorized(req, env), url.origin, slug);
+    if (rest.length === 0) return appPage(env, await ui(), url.origin, slug);
 
     // Release history, newest first. Lets a site render a changelog from
     // Herald instead of a hand-maintained file.

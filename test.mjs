@@ -20,6 +20,8 @@ import {
 } from "./lib/feeds.js";
 import { esc, render } from "./lib/render.js";
 import { checkCredentials, hasSession, sessionCookie, timingSafeEqual } from "./lib/auth.js";
+import * as d1 from "./lib/db.js";
+import * as demo from "./lib/demo.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tpl = (name) => readFileSync(join(here, "templates", name), "utf8");
@@ -143,7 +145,7 @@ for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "l
     assert.ok(
       [
         "title", "nav", "body", "count", "apps", "name", "version", "platforms",
-        "links", "error", "boot", "when", "href", "card", "history",
+        "links", "error", "boot", "when", "href", "card", "history", "demo", "tryDemo",
       ].includes(key),
       `${name} uses an unknown placeholder: ${key}`,
     );
@@ -207,5 +209,51 @@ assert.equal(
   "an extended expiry invalidates the signature",
 );
 assert.equal(await hasSession(withCookie("herald_session=1.abc"), env), false, "expired");
+
+// ---------------------------------------------------------------- demo
+
+// The demo store stands in for D1 behind the same names, so a query the
+// routes can make against one has to exist on the other.
+for (const name of Object.keys(d1)) assert.equal(typeof demo[name], "function", `demo.js is missing ${name}`);
+
+assert.equal(demo.inDemo(withCookie("herald_demo=1")), true);
+assert.equal(demo.inDemo(withCookie("other=1; herald_demo=1; x=2")), true);
+assert.equal(demo.inDemo(withCookie("herald_demo=10")), false, "the value is exact");
+assert.equal(demo.inDemo(new Request("https://herald.example/")), false);
+
+const store = demo.createStore();
+assert.ok(store.demo, "a demo handle says so, which is how worker.js picks it over D1");
+const listed = demo.appsWithLatest(store);
+assert.deepEqual(listed.map((a) => a.slug), ["ctx", "nimbus", "orbit"], "sorted by name");
+assert.equal(listed[0].version, "0.1.1", "newest pub_date wins");
+assert.deepEqual(listed[0].platforms, ["darwin-aarch64", "windows-x86_64"]);
+assert.equal(listed[0].signed, true, "ctx has a Tauri feed");
+assert.equal(listed[0].hashed, false);
+assert.equal(listed[1].hashed, true, "nimbus has an Electron feed");
+assert.equal(listed[2].version, null, "an app with no release still lists");
+assert.equal(listed[2].unlisted, true);
+assert.equal(demo.releaseHistory(store, "ctx").length, 2);
+assert.equal(demo.artifactsFor(store, 4).length, 3);
+
+// A publish round trip: a new version becomes latest, a notes edit keeps the
+// date, and deletes cascade the way the schema's foreign keys do.
+demo.upsertApp(store, "orbit", "Orbit One");
+assert.equal(demo.appsWithLatest(store).find((a) => a.slug === "orbit").name, "Orbit One");
+const { id } = demo.upsertRelease(store, "orbit", "1.0.0", "first", null);
+assert.equal(demo.latestRelease(store, "orbit"), null, "a release with no artifacts is not latest");
+demo.upsertArtifacts(store, id, [["linux-x86_64", { url: "https://x/a.AppImage", size: 5 }]]);
+assert.equal(demo.latestRelease(store, "orbit").version, "1.0.0");
+const dated = demo.releaseByVersion(store, "orbit", "1.0.0").pub_date;
+demo.upsertRelease(store, "orbit", "1.0.0", "edited", null);
+assert.equal(demo.releaseByVersion(store, "orbit", "1.0.0").pub_date, dated, "a notes edit does not re-date");
+assert.equal(demo.releaseByVersion(store, "orbit", "1.0.0").notes, "edited");
+assert.deepEqual(demo.deleteArtifact(store, "orbit", "1.0.0", "linux-x86_64"), { platform: "linux-x86_64" });
+assert.equal(demo.deleteArtifact(store, "orbit", "1.0.0", "linux-x86_64"), null);
+assert.deepEqual(demo.deleteRelease(store, "orbit", "1.0.0"), { version: "1.0.0" });
+assert.deepEqual(demo.deleteApp(store, "ctx"), { slug: "ctx" });
+assert.equal(demo.releaseHistory(store, "ctx").length, 0, "releases go with the app");
+assert.equal(store.artifacts.some((a) => a.release_id <= 2), false, "and so do their artifacts");
+assert.equal(demo.deleteApp(store, "ctx"), null);
+assert.equal(demo.createStore().apps.length, 3, "each store starts from the seed files");
 
 console.log("herald: all checks passed");

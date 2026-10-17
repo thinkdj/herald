@@ -36,6 +36,7 @@ lib/auth.js            password check, signed session cookie, bearer token
 lib/db.js              every D1 query
 lib/feeds.js           the dialects, plus version and platform rules. all pure
 lib/render.js          {{placeholder}} templating, and the page security headers
+lib/demo.js            the same queries as db.js over demo/*.json, for /demo
 templates/*.html       real HTML files, imported as text modules
 vendor/                the Tailwind play build, a .txt so it imports as text too
 schema.sql
@@ -65,6 +66,7 @@ scripts, the two stylesheet hosts, and nothing else, and that forbids framing.
 | `GET /` | App index. `?format=json` for the same data. Unlisted apps are left out |
 | `GET /:slug` | One app: its links and every release with notes. Works for unlisted apps too |
 | `GET /login`, `POST /login`, `POST /logout` | Sign in with `ADMIN_USER` and `ADMIN_PASSWORD` |
+| `GET /demo` | A sandbox session over `demo/*.json`. Only when the `DEMO` var is set |
 | `GET /admin` | Publishing UI: pick an app, pick or add a version, drop builds. Redirects to `/login` without a session |
 | `PUT /:slug` | Create an app, rename it, or toggle it. Body `{"name": "...", "unlisted": true}`, either field optional |
 | `DELETE /:slug` | Delete an app and every release |
@@ -207,6 +209,20 @@ pnpm wrangler d1 execute herald-dev --local \
 pnpm wrangler dev --config herald/wrangler.jsonc --local \
   --var ADMIN_USER:ops --var ADMIN_PASSWORD:dev --var SESSION_SECRET:devsign
 ```
+
+## Demo mode
+
+`/demo` starts a sandbox session: signed in, over an in-memory copy of
+`demo/apps.json`, `demo/releases.json` and `demo/artifacts.json` instead of
+D1, with a bucket that counts an upload's bytes and drops them. Every page
+and every write works, nothing persists past the isolate, and an amber bar
+at the top says `In Demo Mode` with an `Exit` link that ends the session.
+
+It only answers when the `DEMO` var is set. The top level of
+`wrangler.jsonc` sets it, so `wrangler dev` has a demo and the login page
+links to it; a deployed environment has neither unless it declares the var
+itself. The store is one per isolate, so two visitors to a public demo would
+see each other's edits.
 
 ## Publishing: the admin page
 
