@@ -3,10 +3,11 @@
 // shape projected into whatever dialect each updater speaks.
 //
 //   GET    /                                 app index, ?format=json for JSON
+//   GET    /:slug                            one app: a download button per OS, every file, the history
 //   GET    /about                            what Herald is
 //   GET    /login, POST /login, POST /logout sign in with ADMIN_USER and ADMIN_PASSWORD
 //   GET    /demo                             a sandbox session over demo/*.json, when DEMO is set
-//   GET    /admin                            publishing UI, requires a session
+//   GET    /admin                            the operator's side: publish, adoption, feed URLs, settings
 //   PUT    /:slug                            create or rename an app
 //   DELETE /:slug                            delete an app and every release
 //   PUT    /:slug/upload/:version/:file      store an artifact in R2
@@ -17,7 +18,6 @@
 //   GET    /:slug/latest-mac.yml             electron-updater, macOS
 //   GET    /:slug/latest-linux.yml           electron-updater, Linux
 //   GET    /:slug/appcast.xml                Sparkle feed, macOS
-//   GET    /:slug/download                   download page: one button per OS, every file, a badge
 //   GET    /:slug/badge.svg                  the latest version as a README badge
 //   GET    /:slug/stats                      counts for the last 30 days, requires a session
 //   GET    /:slug/releases                   release history, newest first
@@ -68,7 +68,6 @@ import loginTpl from "./templates/login.html";
 import adminTpl from "./templates/admin.html";
 import appTpl from "./templates/app.html";
 import aboutTpl from "./templates/about.html";
-import downloadTpl from "./templates/download.html";
 // Tailwind's play build, as a text module for the same reason the templates
 // are: wrangler bundles .txt as text with no rule to add.
 import tailwind from "./vendor/tailwind-3.4.17.txt";
@@ -125,17 +124,16 @@ const redirect = (to, ...cookies) => {
 const navLink = (href, icon, label) =>
   `<a class="icon-btn w-auto gap-1.5 px-2.5" href="${href}"><i class="${icon} text-lg"></i><span class="hidden sm:inline">${label}</span></a>`;
 // No sign in link for visitors: the public pages are for downloads, and the
-// operator knows /login.
+// operator knows /login. What Herald is lives in the footer of every page.
 // In demo mode the bar above the header carries the exit, so the nav keeps
-// only the Publish link.
+// only the Admin link.
 const navFor = (signedIn, demoMode) =>
-  navLink("/about", "iconoir-info-circle", "About") +
-  (signedIn
-    ? navLink("/admin", "iconoir-upload", "Publish") +
+  signedIn
+    ? navLink("/admin", "iconoir-tower", "Admin") +
       (demoMode
         ? ""
         : `<form method="post" action="/logout"><button class="icon-btn" title="Sign out"><i class="iconoir-log-out text-lg"></i></button></form>`)
-    : "");
+    : "";
 
 const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-between border-b border-amber-200 bg-amber-100 px-5 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/15 dark:text-amber-200">
   <span class="inline-flex items-center gap-2">
@@ -150,7 +148,7 @@ const DEMO_BAR = `<div class="sticky top-0 z-50 flex h-9 items-center justify-be
 
 // The pieces of the layout every page fills in: the nav for who is looking,
 // and the demo bar when the session is a sandbox.
-const chrome = (signedIn, demoMode) => ({ nav: navFor(signedIn, demoMode), demo: demoMode ? DEMO_BAR : "" });
+const chrome = (signedIn, demoMode) => ({ nav: navFor(signedIn, demoMode), demo: demoMode ? DEMO_BAR : "", signedIn });
 
 // Counts are buffered here, per isolate, and written in one batch a few
 // seconds later or when the buffer fills: a thousand update checks become
@@ -190,134 +188,145 @@ const OS = [
 ];
 
 // Stable is the default and goes unlabelled; anything else is marked.
-const channelChip = (channel) => (channel && channel !== "stable" ? ` <span class="chip">${esc(channel)}</span>` : "");
+const channelChip = (channel) =>
+  channel && channel !== "stable" ? `<span class="ch ch-${esc(channel)}">${esc(channel)}</span>` : "";
 
 const shortDate = (d) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-// One app's card: name, latest version, and every stable link it has. Links
-// are the point: each is stable across releases, so a site or a README can
-// point at them once. Full URLs, so a row can be copied straight into a config.
-function appCard(a, origin) {
-  const links = a.version
-    ? [
-        // Only feeds this app really has: a Tauri feed needs a signature,
-        // an electron feed needs a hash and a size.
-        ...(a.signed ? [["iconoir-rss-feed", "Tauri feed", `/${a.slug}/latest.json`]] : []),
-        ...(a.hashed ? [["iconoir-rss-feed", "Electron feed", `/${a.slug}/latest.yml`]] : []),
-        ...(a.signed && a.platforms.some((p) => p.startsWith("darwin"))
-          ? [["iconoir-rss-feed", "Sparkle feed", `/${a.slug}/appcast.xml`]]
-          : []),
-        ["iconoir-download", "Download page", `/${a.slug}/download`],
-        ["iconoir-journal", "History", `/${a.slug}/releases`],
-        ...OS.filter(([os]) => a.platforms.some((p) => p.startsWith(os))).map(([, label, alias, icon]) => [
-          icon,
-          `Download for ${label}`,
-          `/${a.slug}/download/${alias}`,
-        ]),
-      ]
-    : [];
-  return render(appCardTpl, {
-    name: a.name,
-    href: `/${a.slug}`,
-    version: a.version ?? "no release yet",
-    when: (a.pub_date ? ` <span class="text-stone-400">&bull;</span> ${shortDate(a.pub_date)}` : "") + channelChip(a.channel),
-    platforms: a.platforms.map((p) => `<span class="chip">${esc(p)}</span>`).join(""),
-    links: links
-      .map(
-        ([icon, label, href]) =>
-          `<tr class="border-t border-line first:border-0 dark:border-line-dark">
-             <td class="whitespace-nowrap py-1.5 pl-5 pr-4 text-stone-600 dark:text-stone-400"><span class="inline-flex items-center gap-1.5"><i class="${icon} text-base leading-none text-stone-400"></i>${esc(label)}</span></td>
-             <td class="w-full break-all py-1.5 font-mono text-xs"><a class="hover:underline" href="${esc(href)}">${esc(origin + href)}</a></td>
-             <td class="py-0.5 pr-3"><button class="icon-btn" data-copy="${esc(origin + href)}" title="Copy"><i class="iconoir-copy"></i></button></td>
-           </tr>`,
-      )
-      .join(""),
-  });
-}
+const megabytes = (n) => (n ? `${(n / 1048576).toFixed(1)} MB` : "");
 
-// Public app index. Unlisted apps are left out here and in the JSON form
-// only; their own page and feeds still answer.
-async function index(env, ui, origin) {
+// The systems a set of platform keys covers, as icons with a spoken name.
+const osIcons = (platforms) =>
+  OS.filter(([os]) => platforms.some((p) => p.startsWith(os)))
+    .map(([, label, , icon]) => `<i class="${icon}" title="${label}"></i><span class="sr-only">${label}</span>`)
+    .join("");
+
+const notFound = (ui, what) =>
+  page(
+    layout,
+    `<section class="mx-auto max-w-3xl py-16 text-center">
+      <i class="iconoir-file-not-found text-4xl text-stone-400"></i>
+      <h1 class="mt-3 text-2xl font-semibold tracking-tight">${esc(what)}</h1>
+      <p class="muted mt-2 text-sm">Check the address, or pick the app from the list.</p>
+      <a class="btn-quiet mt-6" href="/">All apps</a>
+    </section>`,
+    { title: "Not found", ...ui, status: 404 },
+  );
+
+// Public app index: one row per app, each a link to its page. A visitor is
+// here to download something, so the feed URLs an operator pastes into a
+// config live in the admin, not here. Unlisted apps are left out here and in
+// the JSON form only; their own page and feeds still answer.
+async function index(env, ui) {
   const apps = (await db.appsWithLatest(env.DB)).filter((a) => !a.unlisted);
-  const cards = apps.map((a) => appCard(a, origin)).join("\n");
+  const rows = apps
+    .map((a) =>
+      render(appCardTpl, {
+        name: a.name,
+        href: `/${a.slug}`,
+        version: a.version ?? "no release yet",
+        when: (a.pub_date ? `<span>${shortDate(a.pub_date)}</span>` : "") + channelChip(a.channel),
+        platforms: osIcons(a.platforms),
+      }),
+    )
+    .join("\n");
   return page(layout, indexTpl, {
     title: "Herald",
     ...ui,
-    count: apps.length === 0 ? "None registered." : `${apps.length} registered.`,
-    apps: cards || `<p class="card px-5 py-8 text-center text-sm text-stone-500">Nothing published yet.</p>`,
+    count: apps.length ? "Pick one to download the latest build or read what changed." : "Nothing is published here yet.",
+    apps: rows
+      ? `<ul class="card divide-y divide-line overflow-hidden dark:divide-line-dark">${rows}</ul>`
+      : ui.signedIn
+        ? `<p class="card px-5 py-10 text-center text-sm"><a class="btn-primary" href="/admin">Create the first app</a></p>`
+        : "",
   });
 }
 
-// Public page for one app: the same card as the index, then every release
-// with its notes. A changelog a site can link to.
-async function appPage(env, ui, origin, slug) {
+// Public page for one app, and the only one: a download button per OS that
+// script promotes for the visitor's own, every file of the latest release on
+// the channel, then every release with its notes. A page a site can link to
+// as both its download page and its changelog.
+async function appPage(env, ui, slug, channel) {
   const app = (await db.appsWithLatest(env.DB)).find((a) => a.slug === slug);
-  if (!app) return json({ error: "not found" }, 404, 0);
-  const history = (await db.releaseHistory(env.DB, slug))
-    .filter((r) => r.platforms.length)
-    .map(
-      (r) => `<li class="card px-5 py-4">
-        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <span class="font-mono font-medium">${esc(r.version)}${channelChip(r.channel)}</span>
-          <span class="text-sm text-stone-500 dark:text-stone-400">${shortDate(r.pub_date)}</span>
-        </div>
-        <div class="mt-2 flex flex-wrap gap-1.5">${r.platforms.map((p) => `<span class="chip">${esc(p)}</span>`).join("")}</div>
-        ${r.notes ? `<p class="mt-3 whitespace-pre-wrap text-sm text-stone-700 dark:text-stone-300">${esc(r.notes)}</p>` : ""}
-      </li>`,
-    )
-    .join("");
-  return page(layout, appTpl, {
-    title: `${app.name} on Herald`,
-    ...ui,
-    card: appCard(app, origin),
-    history: history || `<li class="text-sm text-stone-500">Nothing published yet.</li>`,
-  });
-}
-
-// Public download page: a button per OS that script promotes for the
-// visitor's own, every file of the latest release, and a badge for a README.
-async function downloadPage(env, ui, origin, slug, channel) {
-  const app = (await db.appsWithLatest(env.DB)).find((a) => a.slug === slug);
-  if (!app) return json({ error: "not found" }, 404, 0);
+  if (!app) return notFound(ui, `No app called ${slug}`);
   const release = await db.latestRelease(env.DB, slug, channel);
   const files = release ? (await db.artifactsFor(env.DB, release.id)).sort((a, b) => a.platform.localeCompare(b.platform)) : [];
+  const releases = (await db.releaseHistory(env.DB, slug)).filter((r) => r.platforms.length);
   const q = channel === "stable" ? "" : `?channel=${channel}`;
+
+  // Offered only when there is something other than stable to switch to.
+  const published = CHANNELS.filter((c) => c === "stable" || releases.some((r) => r.channel === c));
+  const channels =
+    published.length > 1
+      ? `<div class="mt-5 flex flex-wrap items-center gap-3">
+          <div class="seg">${published
+            .map((c) => `<a href="/${esc(slug)}${c === "stable" ? "" : `?channel=${c}`}" aria-current="${c === channel}">${c}</a>`)
+            .join("")}</div>
+          <span class="muted text-xs">${
+            channel === "stable" ? "Stable builds only." : `The newest build up to ${channel}, tested less than stable.`
+          }</span>
+        </div>`
+      : "";
+
   const buttons = OS.filter(([os]) => files.some((f) => f.platform.startsWith(os)))
-    .map(
-      ([os, label, alias, icon]) => `<a class="btn-quiet !flex-col !items-start gap-1 !px-4 !py-3" data-os="${alias}" href="/${esc(slug)}/download/${alias}${q}">
-        <span class="inline-flex items-center gap-2 text-base"><i class="${icon} text-xl"></i>${label}</span>
-        <span class="text-xs opacity-70" data-hint>${files
-          .filter((f) => f.platform.startsWith(os))
-          .map((f) => esc(f.platform.slice(os.length + 1)))
-          .join(", ")}</span>
-      </a>`,
-    )
+    .map(([os, label, alias, icon]) => {
+      const mine = files.filter((f) => f.platform.startsWith(os));
+      const hint = [mine.map((f) => f.platform.slice(os.length + 1)).join(", "), mine.length === 1 ? megabytes(mine[0].size) : ""];
+      return `<a class="btn-quiet !justify-start gap-3 !px-4 !py-3" data-os="${alias}" href="/${esc(slug)}/download/${alias}${q}">
+        <i class="${icon} text-2xl"></i>
+        <span class="text-left"><span class="block text-base">Download for ${label}</span>
+        <span class="block text-xs font-normal opacity-70">${esc(hint.filter(Boolean).join(", "))}</span></span>
+      </a>`;
+    })
     .join("");
+
   const rows = files
     .map(
       (f) => `<tr class="border-t border-line first:border-0 dark:border-line-dark">
-        <td class="whitespace-nowrap py-2 pl-5 pr-4"><span class="chip">${esc(f.platform)}</span></td>
+        <td class="whitespace-nowrap py-2 pl-4 pr-4"><span class="chip">${esc(f.platform)}</span></td>
         <td class="w-full break-all py-2 pr-4 font-mono text-xs"><a class="hover:underline" href="${esc(f.url)}">${esc(f.url.split("/").pop())}</a></td>
-        <td class="whitespace-nowrap py-2 pr-4 text-xs text-stone-500">${f.size ? `${(f.size / 1048576).toFixed(1)} MB` : ""}</td>
-        <td class="whitespace-nowrap py-2 pr-5 text-xs text-emerald-700 dark:text-emerald-400">${
+        <td class="muted whitespace-nowrap py-2 pr-4 text-xs">${megabytes(f.size)}</td>
+        <td class="whitespace-nowrap py-2 pr-4 text-xs text-emerald-700 dark:text-emerald-400">${
           f.signature ? '<i class="iconoir-shield-check"></i> signed' : f.sha512 ? '<i class="iconoir-check-circle"></i> hashed' : ""
         }</td>
       </tr>`,
     )
     .join("");
-  return page(layout, downloadTpl, {
-    title: `Download ${app.name}`,
+
+  const history = releases
+    .map(
+      (r) => `<li class="grid gap-x-8 gap-y-2 border-t border-line py-5 first:border-0 dark:border-line-dark sm:grid-cols-[10rem_minmax(0,1fr)]">
+        <div>
+          <div class="flex flex-wrap items-center gap-2"><span class="font-mono font-medium">${esc(r.version)}</span>${channelChip(r.channel)}</div>
+          <div class="muted mt-0.5 text-sm">${shortDate(r.pub_date)}</div>
+          ${r.version === release?.version ? `<div class="mt-1 text-xs font-medium text-seal dark:text-seal-bright">Current</div>` : ""}
+        </div>
+        <div>
+          <p class="whitespace-pre-wrap text-sm leading-relaxed ${r.notes ? "text-stone-700 dark:text-stone-300" : "text-stone-400"}">${esc(r.notes || "No notes for this release.")}</p>
+          <div class="mt-2 flex items-center gap-2 text-stone-400">${osIcons(r.platforms)}</div>
+        </div>
+      </li>`,
+    )
+    .join("");
+
+  return page(layout, appTpl, {
+    title: `${app.name} on Herald`,
     ...ui,
     name: app.name,
-    slug,
-    href: `/${slug}`,
-    channel,
-    version: release?.version ?? "no release yet",
-    when: release ? ` <span class="text-stone-400">&bull;</span> ${shortDate(release.pub_date)}` : "",
-    buttons: buttons || `<p class="text-sm text-stone-500 sm:col-span-3">Nothing published on this channel yet.</p>`,
-    rows: rows || `<tr><td class="px-5 py-4 text-sm text-stone-500">No files.</td></tr>`,
-    badge: `[![Latest release](${origin}/${slug}/badge.svg)](${origin}/${slug}/download)`,
+    version: release?.version ?? "No release yet",
+    when: release ? `Released ${shortDate(release.pub_date)}` : "",
+    channels,
+    manage: ui.signedIn ? `<a class="btn-quiet !py-1.5" href="/admin#${esc(slug)}"><i class="iconoir-tower"></i>Manage</a>` : "",
+    buttons: buttons || `<p class="card muted px-5 py-8 text-center text-sm sm:col-span-3">Nothing published on the ${channel} channel yet.</p>`,
+    files: rows
+      ? `<details class="mt-4 text-sm">
+          <summary class="muted inline-flex cursor-pointer items-center gap-1 rounded hover:text-stone-900 dark:hover:text-stone-100">
+            Every file in ${esc(release.version)}<i class="iconoir-nav-arrow-down"></i></summary>
+          <div class="card mt-3 overflow-x-auto"><table class="w-full"><tbody>${rows}</tbody></table></div>
+        </details>`
+      : "",
+    history: history || `<li class="muted py-5 text-sm">Nothing published yet.</li>`,
   });
 }
 
@@ -523,7 +532,7 @@ export default {
       if (url.searchParams.get("format") === "json") {
         return json({ apps: (await db.appsWithLatest(env.DB)).filter((a) => !a.unlisted) }, 200, 0);
       }
-      return index(env, await ui(), url.origin);
+      return index(env, await ui());
     }
 
     // Artifact bytes and the pages Herald owns, checked before anything is
@@ -613,7 +622,12 @@ export default {
     }
     if (method !== "GET") return json({ error: "method not allowed" }, 405, 0);
 
-    if (rest.length === 0) return appPage(env, await ui(), url.origin, slug);
+    // A page falls back to stable on a channel it does not know; a feed, below, refuses.
+    if (rest.length === 0) {
+      return appPage(env, await ui(), slug, normalizeChannel(url.searchParams.get("channel")) ?? "stable");
+    }
+    // The download page and the app page are one page now.
+    if (rest.length === 1 && rest[0] === "download") return redirect(`/${slug}${url.search}`);
 
     // The operator's counts. Not public: they say how many copies are out
     // there, which is the operator's business and nobody else's.
@@ -631,8 +645,6 @@ export default {
 
     const channel = normalizeChannel(url.searchParams.get("channel"));
     if (!channel) return json({ error: `channel must be one of ${CHANNELS.join(", ")}` }, 400, 0);
-
-    if (rest.length === 1 && rest[0] === "download") return downloadPage(env, await ui(), url.origin, slug, channel);
 
     const release = await db.latestRelease(env.DB, slug, channel);
     if (rest.length === 1 && rest[0] === "badge.svg") {

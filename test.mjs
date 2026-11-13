@@ -177,7 +177,7 @@ assert.equal(render("{{missing}}", {}), "{{missing}}", "an unknown key is left a
 assert.equal(render("`${x}` and {{y}}", { y: "1" }), "`${x}` and 1");
 assert.equal(esc(`<&">'`), "&lt;&amp;&quot;&gt;&#39;");
 
-for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "login.html", "admin.html", "about.html", "download.html"]) {
+for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "login.html", "admin.html", "about.html"]) {
   const body = tpl(name);
   assert.ok(body.length > 0, `${name} must not be empty`);
   // Every placeholder the templates use must be one a route actually supplies.
@@ -185,8 +185,8 @@ for (const name of ["layout.html", "index.html", "app-card.html", "app.html", "l
     assert.ok(
       [
         "title", "nav", "body", "count", "apps", "name", "version", "platforms",
-        "links", "error", "boot", "when", "href", "card", "history", "demo", "tryDemo",
-        "slug", "channel", "buttons", "rows", "badge",
+        "error", "boot", "when", "href", "history", "demo", "tryDemo",
+        "manage", "channels", "buttons", "files",
       ].includes(key),
       `${name} uses an unknown placeholder: ${key}`,
     );
@@ -205,6 +205,8 @@ for (const id of ["apps", "new-app", "app-form", "app-slug", "app-name", "main",
   assert.ok(admin.includes(`id="${id}"`), `the admin page must have #${id}`);
 }
 assert.ok(tpl("login.html").includes('name="password"'), "the login form must post a password");
+// The app page's script promotes the visitor's own system by these hooks.
+assert.ok(tpl("app.html").includes('id="buttons"') && tpl("app.html").includes("data-os="), "the app page keeps its download hooks");
 // The panel is rebuilt on every queue change, so what the user typed has to
 // come back from state, never from the markup that was just thrown away.
 assert.ok(admin.includes("semver(S.ver)") && admin.includes("notes: S.notes"), "publish reads the version and notes from state");

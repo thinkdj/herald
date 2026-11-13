@@ -81,13 +81,38 @@
         .card { @apply rounded-lg border border-line bg-card dark:border-line-dark dark:bg-card-dark; }
         .chip { @apply inline-block rounded bg-stone-200/70 px-1.5 py-0.5 font-mono text-[11px] text-stone-700 dark:bg-stone-800 dark:text-stone-300; }
         .icon-btn {
-          @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 transition
+          @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-stone-500 transition
                  hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100;
         }
+        .muted { @apply text-stone-600 dark:text-stone-400; }
+        .heading { @apply text-sm font-semibold text-stone-900 dark:text-stone-100; }
+        /* A release channel, always the same colour: stable green, beta amber, nightly violet. */
+        .ch {
+          @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-2 py-0.5 text-[11px] font-medium leading-4
+                 text-stone-700 dark:border-line-dark dark:text-stone-300;
+        }
+        .ch::before { content: ""; @apply h-1.5 w-1.5 rounded-full bg-emerald-500; }
+        .ch-beta::before { @apply bg-amber-500; }
+        .ch-nightly::before { @apply bg-violet-500; }
+        /* One choice out of a few: links or buttons, the current one raised. */
+        .seg { @apply inline-flex rounded-md border border-line bg-stone-200/50 p-0.5 dark:border-line-dark dark:bg-stone-900; }
+        .seg > * {
+          @apply cursor-pointer rounded px-2.5 py-1 text-xs font-medium capitalize text-stone-600 transition
+                 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100;
+        }
+        .seg > [aria-current="true"], .seg > [aria-pressed="true"] {
+          @apply bg-white text-stone-900 shadow-sm dark:bg-stone-700 dark:text-stone-100;
+        }
+        .tab {
+          @apply -mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-sm text-stone-600 transition
+                 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100;
+        }
+        .tab[aria-current="page"] { @apply border-seal font-medium text-stone-900 dark:border-seal-bright dark:text-stone-100; }
+        a:focus-visible, button:focus-visible, summary:focus-visible { @apply outline-none ring-2 ring-seal/40; }
       }
     </style>
   </head>
-  <body class="min-h-full bg-paper font-sans text-stone-900 antialiased dark:bg-paper-dark dark:text-stone-100">
+  <body class="flex min-h-full flex-col bg-paper font-sans text-stone-900 antialiased dark:bg-paper-dark dark:text-stone-100">
     {{{demo}}}
     <header class="border-b border-line bg-card/80 backdrop-blur dark:border-line-dark dark:bg-card-dark/80">
       <div class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
@@ -107,7 +132,10 @@
         </nav>
       </div>
     </header>
-    <main class="mx-auto max-w-6xl px-5 py-8 sm:py-10">{{{body}}}</main>
+    <main class="mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:py-10">{{{body}}}</main>
+    <footer class="mx-auto w-full max-w-6xl px-5 pb-8 text-xs text-stone-500">
+      Herald tells installed apps that a new version is out. <a class="underline decoration-stone-300 underline-offset-2 hover:text-stone-900 dark:decoration-stone-700 dark:hover:text-stone-100" href="/about">How it works</a>
+    </footer>
 
     <!-- One confirm dialog for the whole app. confirmDialog(title, body, action) resolves true on confirm. -->
     <dialog id="confirm" class="w-[calc(100%-2rem)] max-w-sm rounded-xl border border-line bg-card p-0 text-stone-900 shadow-2xl

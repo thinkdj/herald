@@ -1,6 +1,33 @@
 <section class="mx-auto max-w-3xl">
-  <a class="mb-6 inline-flex items-center gap-1 text-sm text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100" href="/"><i class="iconoir-arrow-left"></i> All apps</a>
-  {{{card}}}
-  <h2 class="mb-3 mt-10 text-sm font-semibold text-stone-600 dark:text-stone-400">Releases</h2>
-  <ol class="space-y-3">{{{history}}}</ol>
+  <div class="mb-8 flex items-center justify-between gap-4">
+    <a class="muted inline-flex items-center gap-1 text-sm hover:text-stone-900 dark:hover:text-stone-100" href="/"><i class="iconoir-arrow-left"></i> All apps</a>
+    {{{manage}}}
+  </div>
+
+  <div class="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+    <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">{{name}}</h1>
+    <div class="sm:text-right">
+      <div class="font-mono text-2xl font-medium">{{version}}</div>
+      <div class="muted mt-0.5 text-sm">{{when}}</div>
+    </div>
+  </div>
+  {{{channels}}}
+
+  <div class="mt-8 grid gap-3 sm:grid-cols-3" id="buttons">{{{buttons}}}</div>
+  {{{files}}}
+
+  <h2 class="heading mb-1 mt-14">Release history</h2>
+  <ol>{{{history}}}</ol>
 </section>
+<script>
+  // Promote the button for the visitor's own system. Everything is a plain
+  // link already, so without script the page still works.
+  (() => {
+    const ua = navigator.userAgent;
+    const os = /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? "macos" : /Linux|X11/.test(ua) ? "linux" : null;
+    const btn = os && document.querySelector(`#buttons [data-os="${os}"]`);
+    if (!btn) return;
+    btn.classList.replace("btn-quiet", "btn-primary");
+    btn.parentElement.prepend(btn);
+  })();
+</script>

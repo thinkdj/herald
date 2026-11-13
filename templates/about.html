@@ -5,8 +5,7 @@
       <path d="M16 8 H24 V13 H28 V8 H36 V13 H40 V8 H48 V20 H45 L46.5 46 H17.5 L19 20 H16 Z"/>
     </svg>
     <div>
-      <p class="font-mono text-xs uppercase tracking-[0.2em] text-stone-500">About</p>
-      <h1 class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Herald tells your app that a new version is out.</h1>
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Herald tells your app that a new version is out.</h1>
       <p class="mt-4 max-w-xl text-base leading-relaxed text-stone-600 dark:text-stone-400">
         A small release server for desktop apps. You drop a build here. Every copy of the app already
         installed asks Herald for the latest version, hears about it, and updates itself.
@@ -21,8 +20,8 @@
         <h2 class="font-semibold">Publish</h2>
       </div>
       <p class="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-        Sign in, pick an app, drop the installers and their signature files. Each platform lands under one
-        version number, from one machine or several.
+        Sign in, open an app, start a release and drop the installers with their signature files. Each
+        platform lands under one version number, from one machine or several.
       </p>
     </li>
     <li class="bg-card p-5 dark:bg-card-dark">
@@ -31,8 +30,8 @@
         <h2 class="font-semibold">Announce</h2>
       </div>
       <p class="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-        Herald turns that into the feed each updater expects: Tauri's <span class="font-mono text-xs">latest.json</span>
-        and electron-updater's <span class="font-mono text-xs">latest.yml</span>, plus a plain download link per platform.
+        Herald turns that into the feed each updater expects: Tauri's <span class="font-mono text-xs">latest.json</span>,
+        electron-updater's <span class="font-mono text-xs">latest.yml</span> and Sparkle's appcast, plus a plain download link per platform.
       </p>
     </li>
     <li class="bg-card p-5 dark:bg-card-dark">
@@ -41,8 +40,8 @@
         <h2 class="font-semibold">Update</h2>
       </div>
       <p class="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-        Installed apps check the feed, verify the signature, and install. Anyone else can read the same
-        page as a changelog, or grab the installer directly.
+        Installed apps check the feed, verify the signature, and install. Anyone else opens the app's
+        page to download the installer or read what changed.
       </p>
     </li>
   </ol>
@@ -70,7 +69,7 @@
 
   <div class="mt-12 flex flex-wrap items-center gap-3 border-t border-line pt-8 dark:border-line-dark">
     <a class="btn-primary" href="/"><i class="iconoir-package"></i>See the apps</a>
-    <a class="btn-quiet" href="/login"><i class="iconoir-upload"></i>Publish a release</a>
+    <a class="btn-quiet" href="/admin"><i class="iconoir-tower"></i>Open the admin</a>
     <p class="ml-auto text-xs text-stone-500">A herald is the one who reads the announcement from the tower. That is the whole job.</p>
   </div>
 </section>
