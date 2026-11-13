@@ -224,7 +224,7 @@ assert.ok(readFileSync(join(here, "vendor", "tailwind-3.4.17.txt"), "utf8").leng
 assert.match(shell, /iconoir@v[\d.]+\/css\/iconoir\.css"\s+integrity="sha384-/, "Iconoir is pinned to a release and a hash");
 // The header carries the mark itself, and the favicon is the same file the worker serves.
 const markPaths = [...readFileSync(join(here, "assets", "herald.svg"), "utf8").matchAll(/ d="([^"]+)"/g)].map((m) => m[1]);
-assert.ok(markPaths.length === 2, "the mark is two paths");
+assert.ok(markPaths.length === 1, "the mark is one path");
 for (const d of markPaths) assert.ok(shell.includes(`d="${d}"`), "the header mark matches assets/herald.svg");
 assert.ok(shell.includes('rel="icon" href="/herald.svg"'), "the favicon is the mark");
 

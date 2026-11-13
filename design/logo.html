@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Herald logo ideas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root { --paper:#F4F4F1; --card:#fff; --ink:#1c1917; --muted:#78716c; --line:#e7e5e4; --seal:#B42318; --mark:#B42318; }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper:#121212; --card:#1c1b1a; --ink:#f5f5f4; --muted:#a8a29e; --line:#2e2c2a; --mark:#F0705E; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.55 "Instrument Sans",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  main { max-width:1040px; margin:0 auto; padding:56px 16px 96px; }
+  svg { fill:currentColor; display:block; }
+  h1 { font-size:clamp(2rem,5vw,3rem); line-height:1.05; letter-spacing:-.03em; margin:0 0 12px; }
+  h2 { font-size:1.6rem; letter-spacing:-.02em; margin:0 0 8px; }
+  p { margin:0 0 10px; max-width:46ch; }
+  .muted { color:var(--muted); }
+  .mono { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.75rem; }
+  a { color:inherit; }
+  a:focus-visible { outline:2px solid var(--mark); outline-offset:3px; border-radius:6px; }
+
+  #lineup { display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:8px; margin:40px 0 72px; }
+  #lineup a { display:grid; justify-items:center; gap:14px; padding:26px 8px 16px; background:var(--card); border:1px solid var(--line); border-radius:14px; text-decoration:none; color:var(--mark); }
+  #lineup a:hover { border-color:var(--mark); }
+  #lineup span { color:var(--ink); font-size:.875rem; font-weight:500; }
+
+  section { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:24px 48px; padding:48px 0; border-top:1px solid var(--line); scroll-margin-top:8px; }
+  @media (max-width:760px) { section { grid-template-columns:1fr; } }
+  .pick { display:inline-block; margin-left:10px; padding:2px 10px; border-radius:99px; background:var(--mark); color:var(--card); font-size:.75rem; font-weight:600; letter-spacing:0; vertical-align:middle; }
+  dl { margin:18px 0 0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:.9rem; }
+  dt { color:var(--muted); } dd { margin:0; }
+
+  .spec { display:grid; grid-template-columns:auto 1fr; gap:8px; }
+  .big, .cell { background:var(--card); border:1px solid var(--line); border-radius:14px; display:flex; align-items:center; justify-content:center; color:var(--mark); }
+  .big { grid-row:span 2; padding:36px; }
+  .sizes { gap:22px; padding:16px; align-items:flex-end; }
+  .sizes figure { margin:0; display:grid; justify-items:center; gap:8px; }
+  .sizes figcaption { color:var(--muted); }
+  .uses { gap:16px; padding:16px; flex-wrap:wrap; }
+  .tile { width:64px; height:64px; border-radius:15px; display:grid; place-items:center; box-shadow:inset 0 0 0 1px rgb(128 128 128 / .25); }
+  .lockup { display:flex; align-items:center; gap:9px; color:var(--ink); font-weight:600; font-size:1.35rem; letter-spacing:-.02em; }
+  .lockup svg { color:var(--mark); }
+  @media (max-width:520px) { .spec { grid-template-columns:1fr; } .big { grid-row:auto; } }
+
+  .word { font-weight:600; letter-spacing:-.035em; line-height:1; display:flex; align-items:baseline; }
+  .word svg { display:inline-block; height:.735em; width:.21em; margin:0 .055em 0 .06em; color:var(--mark); }
+</style>
+</head>
+<body>
+
+<!-- Every mark is one <symbol> on a 64 grid, drawn in currentColor. Copy the inside of a symbol to get the SVG. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="tower" viewBox="0 0 64 64">
+    <path d="M12 46H52V56H12Z" fill-opacity=".78"/>
+    <path d="M16 8H24V13H28V8H36V13H40V8H48V20H45L46.5 46H17.5L19 20H16Z"/>
+  </symbol>
+
+  <symbol id="gate" viewBox="0 0 64 64">
+    <path d="M12 8H26V20H38V8H52V56H38V40A6 6 0 0 0 26 40V56H12Z"/>
+  </symbol>
+
+  <symbol id="barbican" viewBox="0 0 64 64">
+    <path d="M12 8H16.5V13H21.5V8H26V20H38V8H42.5V13H47.5V8H52V56H38V40A6 6 0 0 0 26 40V56H12Z"/>
+  </symbol>
+  <symbol id="block" viewBox="0 0 64 64">
+    <path d="M8 44H56V56H8Z" fill-opacity=".78"/>
+    <path d="M8 30H22V44H8ZM25 30H39V44H25ZM42 12H56V26H42Z"/>
+  </symbol>
+
+  <symbol id="fanfare" viewBox="0 0 64 64">
+    <rect x="3" y="17" width="5" height="9" rx="2"/>
+    <rect x="6" y="19" width="38" height="5"/>
+    <path d="M40 19C48 19 55 15 59 8V35C55 28 48 24 40 24Z"/>
+    <path d="M14 24H38V54L26 46L14 54Z" fill-opacity=".78"/>
+  </symbol>
+
+  <symbol id="seal" viewBox="0 0 64 64">
+    <mask id="m-seal">
+      <rect width="64" height="64" fill="#fff"/>
+      <path fill="#000" transform="translate(32 32) scale(.5) translate(-32 -32)" d="M12 8H26V20H38V8H52V56H38V40A6 6 0 0 0 26 40V56H12Z"/>
+    </mask>
+    <g mask="url(#m-seal)">
+      <circle cx="32" cy="32" r="21"/>
+      <circle cx="52.5" cy="32" r="6.2"/><circle cx="49.75" cy="42.25" r="6.2"/><circle cx="42.25" cy="49.75" r="6.2"/>
+      <circle cx="32" cy="52.5" r="6.2"/><circle cx="21.75" cy="49.75" r="6.2"/><circle cx="14.25" cy="42.25" r="6.2"/>
+      <circle cx="11.5" cy="32" r="6.2"/><circle cx="14.25" cy="21.75" r="6.2"/><circle cx="21.75" cy="14.25" r="6.2"/>
+      <circle cx="32" cy="11.5" r="6.2"/><circle cx="42.25" cy="14.25" r="6.2"/><circle cx="49.75" cy="21.75" r="6.2"/>
+    </g>
+  </symbol>
+
+  <symbol id="arms" viewBox="0 0 64 64">
+    <mask id="m-arms">
+      <rect width="64" height="64" fill="#fff"/>
+      <path d="M0 50L32 22L64 50" fill="none" stroke="#000" stroke-width="7"/>
+    </mask>
+    <path mask="url(#m-arms)" d="M10 8H54V30C54 44 44 53 32 58C20 53 10 44 10 30Z"/>
+  </symbol>
+
+  <symbol id="colours" viewBox="0 0 64 64">
+    <path d="M10 50H46V58H10Z" fill-opacity=".78"/>
+    <path d="M13 26H19V30H23V26H33V30H37V26H43V35H41L42 50H14L15 35H13Z"/>
+    <path d="M26.5 5H29.5L52 11.5L29.5 18V26H26.5Z"/>
+  </symbol>
+</svg>
+
+<main>
+  <h1>Marks for Herald</h1>
+  <p class="muted">The tower Herald started with, and the ways it could go. The Gatehouse was chosen and is the mark in the app. Each one is tested at favicon size, as an app icon, and beside the name. Colours follow your system theme.</p>
+
+  <nav id="lineup" aria-label="All marks"></nav>
+  <div id="marks"></div>
+
+  <section id="wordmark">
+    <div>
+      <h2>Wordmark</h2>
+      <p>Lower case, tight, with the l built as a tower. It works with any mark above or alone, and it is the only place the tower needs to appear if the mark moves on.</p>
+      <dl><dt>Pairs best with</dt><dd>Gatehouse or Seal</dd><dt>Watch for</dt><dd>The l needs redrawing if the typeface ever changes.</dd></dl>
+    </div>
+    <div class="spec" style="grid-template-columns:1fr">
+      <div class="big" style="color:var(--ink)"><div class="word" style="font-size:clamp(3rem,11vw,5.5rem)">hera<svg viewBox="0 0 12 42" preserveAspectRatio="none"><path d="M0 0H4V5H8V0H12V42H0Z"/></svg>d</div></div>
+      <div class="cell uses" style="color:var(--ink)">
+        <div class="word" style="font-size:1.5rem">hera<svg viewBox="0 0 12 42" preserveAspectRatio="none"><path d="M0 0H4V5H8V0H12V42H0Z"/></svg>d</div>
+        <div class="lockup"><svg width="26" height="26"><use href="#gate"/></svg><div class="word" style="font-size:1.5rem">hera<svg viewBox="0 0 12 42" preserveAspectRatio="none"><path d="M0 0H4V5H8V0H12V42H0Z"/></svg>d</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div><h2>What shipped</h2></div>
+    <div>
+      <p><strong>Gatehouse</strong> is the mark: header, favicon, about page. It is the only one that is both the letter and the tower, and it is a single path.</p>
+      <p><strong>Seal</strong> could be its formal dress, for large or ceremonial places: the README cover, the sign-in page, a stamp beside a signed release.</p>
+      <p>The Seal and the tower wordmark are not in the app.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+  const MARKS = [
+    ["tower", "Tower", "The mark before this one: a tower, the kind a herald speaks from.", "Distinct in the header.", "Says castle or chess before it says Herald. Nothing in it is an H or a release."],
+    ["gate", "Gatehouse", "The tower becomes the letter. A crenel cut from the top and an arched gate cut from the bottom leave an H. Every release leaves through the gate.", "One path, one colour, solid at 16 pixels. Keeps the tower and adds the initial.", "Heavier than the old tower, and it does not speak of sound or announcing."],
+    ["barbican", "Barbican", "The Gatehouse with a crenel cut down into the top of each post, so both tops of the H read as towers. Same outline as the Gatehouse: nothing sticks out.", "Still one path and one colour. Says castle more clearly than the Gatehouse and keeps its footprint and its H.", "The two small crenels are about a pixel wide at 16, so they soften at favicon size."],
+    ["block", "Next block", "The battlement alone. Three merlons for major, minor and patch, with the last one being set in place: a release, drawn.", "The only mark here about versions. Simple enough to animate on publish.", "At a glance it can pass for a bar chart."],
+    ["fanfare", "Fanfare", "The literal herald: a straight trumpet with a banner hung from it.", "Says announcement at once. The banner could carry an app's own colour.", "The tube thins out at 16 pixels, and megaphone icons live nearby."],
+    ["seal", "Seal", "A wax seal pressed with the gatehouse H. The brand red is already named seal, and every release Herald serves to Tauri is signed.", "Warm and ownable, and it makes the colour mean something.", "A busy edge at small sizes. Badge shapes are common."],
+    ["arms", "Arms", "Heralds kept the rolls of arms. A shield parted by a chevron, the oldest way to draw the word up.", "Trust and update in one shape, with real heraldry behind it.", "Reads security product before it reads release server."],
+    ["colours", "Colours", "The old tower with its flag run up: there is news.", "Keeps every bit of the old tower and gives it a reason.", "The most detail here, and the weakest at 16 pixels."],
+  ];
+  const PICK = "gate";
+  const m = (id, px) => `<svg width="${px}" height="${px}" aria-hidden="true"><use href="#${id}"/></svg>`;
+
+  document.getElementById("lineup").innerHTML = MARKS.map(([id, name]) => `<a href="#s-${id}">${m(id, 56)}<span>${name}</span></a>`).join("");
+
+  document.getElementById("marks").innerHTML = MARKS.map(([id, name, idea, pro, con]) => `
+    <section id="s-${id}">
+      <div>
+        <h2>${name}${id === PICK ? '<span class="pick">Chosen</span>' : ""}</h2>
+        <p>${idea}</p>
+        <dl><dt>Works because</dt><dd>${pro}</dd><dt>Watch for</dt><dd>${con}</dd></dl>
+      </div>
+      <div class="spec">
+        <div class="big">${m(id, 144)}</div>
+        <div class="cell sizes">${[16, 24, 32, 48].map((px) => `<figure>${m(id, px)}<figcaption class="mono">${px}</figcaption></figure>`).join("")}</div>
+        <div class="cell uses">
+          <div class="tile" style="background:#B42318;color:#fff">${m(id, 40)}</div>
+          <div class="tile" style="background:#1c1917;color:#F0705E">${m(id, 40)}</div>
+          <div class="tile" style="background:#F4F4F1;color:#1c1917;border:1px solid #e7e5e4">${m(id, 40)}</div>
+          <div class="lockup">${m(id, 26)}Herald</div>
+        </div>
+      </div>
+    </section>`).join("");
+</script>
+</body>
+</html>

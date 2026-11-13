@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="currentColor" color="#B42318" aria-label="Herald">
-  <!-- A tower, the kind a herald speaks from. Three merlons, a tapering body, a plinth. Two shapes, two tones. -->
-  <path d="M12 46 H52 V56 H12 Z" fill-opacity="0.78"/>
-  <path d="M16 8 H24 V13 H28 V8 H36 V13 H40 V8 H48 V20 H45 L46.5 46 H17.5 L19 20 H16 Z"/>
+  <!-- A gatehouse that is also the letter H: a crenel cut from the top, an arched gate from the bottom. One path. -->
+  <path d="M12 8H26V20H38V8H52V56H38V40A6 6 0 0 0 26 40V56H12Z"/>
 </svg>
