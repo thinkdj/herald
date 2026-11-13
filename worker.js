@@ -372,12 +372,12 @@ async function login(req, env, url, ui) {
 }
 
 // The page boots with the app list; everything after that is fetched.
-async function admin(env, ui) {
+async function admin(env, ui, origin) {
   const apps = await db.appsWithLatest(env.DB);
   return page(layout, adminTpl, {
-    title: "Publish",
+    title: "Herald admin",
     ...ui,
-    boot: JSON.stringify({ apps, platforms: PLATFORMS, channels: CHANNELS }).replace(/</g, "\\u003c"),
+    boot: JSON.stringify({ apps, origin, platforms: PLATFORMS, channels: CHANNELS }).replace(/</g, "\\u003c"),
   });
 }
 
@@ -578,7 +578,7 @@ export default {
       if (!(await signedIn())) return redirect("/login");
       // Every app, unlisted ones included: the UI needs the whole list.
       if (url.searchParams.get("format") === "json") return json({ apps: await db.appsWithLatest(env.DB) }, 200, 0);
-      return admin(env, await ui());
+      return admin(env, await ui(), url.origin);
     }
 
     const [slug, ...rest] = seg;

@@ -201,10 +201,14 @@ const admin = tpl("admin.html");
 const inline = admin.match(/<script>([\s\S]*)<\/script>/);
 assert.ok(inline, "the admin page must contain an inline script");
 new Function(inline[1]);
-for (const id of ["apps", "new-app", "app-form", "app-slug", "app-name", "main", "boot"]) {
+for (const id of ["view", "new-app", "app-form", "app-slug", "app-name", "boot"]) {
   assert.ok(admin.includes(`id="${id}"`), `the admin page must have #${id}`);
 }
 assert.ok(tpl("login.html").includes('name="password"'), "the login form must post a password");
+// Every tab the admin links to has a function that draws it.
+for (const [, tab] of admin.matchAll(/^    \["(\w+)", "\w+", "iconoir-[\w-]+"\],$/gm)) {
+  assert.ok(admin.includes(`function ${tab}(`), `the admin page must draw the ${tab} tab`);
+}
 // The app page's script promotes the visitor's own system by these hooks.
 assert.ok(tpl("app.html").includes('id="buttons"') && tpl("app.html").includes("data-os="), "the app page keeps its download hooks");
 // The panel is rebuilt on every queue change, so what the user typed has to

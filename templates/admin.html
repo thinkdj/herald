@@ -1,25 +1,37 @@
-<div class="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
-  <aside>
-    <div class="mb-3 flex items-center justify-between">
-      <h1 class="text-sm font-semibold text-stone-600 dark:text-stone-400">Apps</h1>
-      <button class="icon-btn" id="new-app" type="button" title="New app"><i class="iconoir-plus text-lg"></i></button>
-    </div>
-    <form class="card mb-3 space-y-3 p-3" id="app-form" hidden>
-      <input class="field font-mono" id="app-slug" placeholder="slug, for example ctx" pattern="[a-z0-9][a-z0-9-]{0,62}" required />
-      <input class="field" id="app-name" placeholder="Display name" required />
-      <label class="flex items-center gap-2 text-sm text-stone-600 dark:text-stone-400">
-        <input type="checkbox" id="app-listed" class="accent-seal" checked /> Show on home listing
-      </label>
-      <div class="flex gap-2">
-        <button class="btn-primary flex-1" type="submit">Create app</button>
-        <button class="btn-quiet" type="button" id="app-cancel">Cancel</button>
-      </div>
-    </form>
-    <ul class="space-y-0.5" id="apps"></ul>
-  </aside>
+<!--
+  The operator's side, in two levels. The first is every app. The second is
+  one app, split by what the operator came to do: publish a release, see who
+  updated, copy a feed URL, or change the app itself. The hash is the address
+  (#ctx/releases/0.1.1, #ctx/adoption), so back, forward and reload all work.
+-->
+<div id="view"></div>
 
-  <section id="main" class="min-w-0"></section>
-</div>
+<dialog id="new-app" class="w-[calc(100%-2rem)] max-w-md rounded-xl border border-line bg-card p-0 text-stone-900 shadow-2xl
+                            backdrop:bg-stone-900/50 backdrop:backdrop-blur-sm dark:border-line-dark dark:bg-card-dark dark:text-stone-100">
+  <form class="space-y-4 p-5" id="app-form">
+    <h2 class="text-lg font-semibold tracking-tight">New app</h2>
+    <div>
+      <label class="label" for="app-name">Name</label>
+      <input class="field" id="app-name" placeholder="Nimbus Notes" required />
+    </div>
+    <div>
+      <label class="label" for="app-slug">Slug</label>
+      <input class="field font-mono" id="app-slug" placeholder="nimbus" pattern="[a-z0-9][a-z0-9-]{0,62}" required />
+      <p class="muted mt-1.5 break-all text-xs">Part of every feed and download URL, so it cannot change later: <span class="font-mono" id="slug-preview"></span></p>
+    </div>
+    <label class="muted flex items-center gap-2 text-sm">
+      <input type="checkbox" id="app-listed" class="accent-seal" checked /> List on the home page
+    </label>
+    <p class="text-sm text-seal dark:text-seal-bright" id="app-error" hidden></p>
+    <div class="flex justify-end gap-2">
+      <button class="btn-quiet" type="button" data-act="close-new-app">Cancel</button>
+      <button class="btn-primary" type="submit">Create app</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Where a message goes when the release editor, and its status line, is not on screen. -->
+<p id="toast" role="status" hidden class="fixed bottom-6 left-1/2 z-40 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-stone-900 px-4 py-2.5 text-sm text-white shadow-lg dark:bg-stone-100 dark:text-stone-900"></p>
 
 <script type="application/json" id="boot">{{{boot}}}</script>
 <script>
@@ -27,16 +39,25 @@
   const boot = JSON.parse($("boot").textContent);
   const KEYS = boot.platforms;
   const CHANNELS = boot.channels;
+  const ORIGIN = boot.origin;
   const OS = [
     ["windows", "Windows", "iconoir-windows", "windows"],
     ["darwin", "macOS", "iconoir-apple-mac", "macos"],
     ["linux", "Linux", "iconoir-linux", "linux"],
+  ];
+  const TABS = [
+    ["releases", "Releases", "iconoir-package"],
+    ["adoption", "Adoption", "iconoir-graph-up"],
+    ["integrate", "Integrate", "iconoir-link"],
+    ["settings", "Settings", "iconoir-settings"],
   ];
 
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const size = (n) => (n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
   const when = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const list = (words) => (words.length < 2 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words.at(-1));
   const semver = (raw) => {
     const v = raw.trim().replace(/^v/, "").replace(/^(\d+)(\.\d+)?(?=$|[-+])/, (_, a, b) => a + (b ?? ".0") + ".0");
     return /^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/.test(v) ? v : null;
@@ -65,334 +86,510 @@
     return "";
   }
 
+  const chip = (channel) => `<span class="ch ch-${esc(channel)}">${esc(channel)}</span>`;
+  const osOf = (platform) => OS.find(([os]) => platform.startsWith(os));
+  const osIcons = (platforms) =>
+    OS.filter(([os]) => platforms.some((p) => p.startsWith(os)))
+      .map(([, label, icon]) => `<i class="${icon}" title="${label}"></i>`)
+      .join("");
+
   // ------------------------------------------------------------------ state
 
-  const S = { apps: boot.apps, slug: null, versions: [], version: null, release: null, queue: [], busy: false, note: "", ver: "", notes: "", channel: "stable", hits: [] };
-
-  async function loadApps() {
-    S.apps = (await api("GET", "/admin?format=json")).apps;
-    renderApps();
-  }
-  async function selectApp(slug, version) {
-    S.slug = slug;
-    S.queue = [];
-    S.versions = slug ? (await api("GET", `/${slug}/releases`)).releases : [];
-    S.hits = slug ? (await api("GET", `/${slug}/stats`)).hits : [];
-    renderApps();
-    await selectVersion(version ?? S.versions[0]?.version ?? "new");
-  }
-  async function selectVersion(v) {
-    S.version = v;
-    S.release = v === "new" ? null : await api("GET", `/${S.slug}/releases/${v}`);
-    S.note = "";
-    S.ver = "";
-    S.notes = S.release?.notes ?? "";
-    S.channel = S.release?.channel ?? "stable";
-    location.hash = S.slug ? `${S.slug}/${v}` : "";
-    renderMain();
-  }
-
-  // ------------------------------------------------------------------ apps
-
-  function renderApps() {
-    $("apps").innerHTML = S.apps.length
-      ? S.apps
-          .map(
-            (a) => `<li><button data-slug="${esc(a.slug)}" class="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition ${
-              a.slug === S.slug
-                ? "bg-card font-medium shadow-sm ring-1 ring-line dark:bg-card-dark dark:ring-line-dark"
-                : "text-stone-600 hover:bg-stone-200/60 dark:text-stone-400 dark:hover:bg-stone-800/60"
-            }"><span class="truncate">${esc(a.name)}</span><span class="shrink-0 font-mono text-xs text-stone-400">${esc(a.version ?? "")}</span></button></li>`,
-          )
-          .join("")
-      : `<li class="px-2.5 py-2 text-sm text-stone-500">No apps yet. Create one to start publishing.</li>`;
-    for (const b of $("apps").querySelectorAll("button")) b.onclick = () => selectApp(b.dataset.slug);
-  }
-
-  $("new-app").onclick = () => {
-    $("app-form").hidden = false;
-    $("app-slug").focus();
+  // ver, notes and channel are what is typed into the release editor. They
+  // live here because the editor is rebuilt whenever the queue changes, and
+  // what was typed has to come back from state, not from discarded markup.
+  const S = {
+    apps: boot.apps,
+    slug: null,
+    tab: "releases",
+    versions: [],
+    stale: true,
+    hits: null,
+    version: null,
+    release: null,
+    queue: [],
+    ver: "",
+    notes: "",
+    channel: "stable",
+    links: "stable",
+    busy: false,
+    note: "",
+    tone: "",
+    turn: 0,
+    ours: false,
   };
-  $("app-cancel").onclick = () => ($("app-form").hidden = true);
-  $("app-form").onsubmit = async (e) => {
-    e.preventDefault();
-    const slug = $("app-slug").value.trim();
-    try {
-      await api("PUT", `/${slug}`, { name: $("app-name").value.trim() || slug, unlisted: !$("app-listed").checked });
-      $("app-form").hidden = true;
-      $("app-form").reset();
-      await loadApps();
-      await selectApp(slug);
-    } catch (err) {
-      alertLine($("app-form"), err.message);
-    }
-  };
-  function alertLine(parent, msg) {
-    let el = parent.querySelector(".alert");
-    if (!el) {
-      el = document.createElement("p");
-      el.className = "alert text-sm text-seal dark:text-seal-bright";
-      parent.append(el);
-    }
-    el.textContent = msg;
-  }
+  const app = () => S.apps.find((a) => a.slug === S.slug);
 
-  // ------------------------------------------------------------------ main
-
-  function links(a) {
-    if (!a.version) return [];
-    return [
-      ...(a.signed ? [["iconoir-rss-feed", "Tauri feed", `/${a.slug}/latest.json`]] : []),
-      ...(a.hashed ? [["iconoir-rss-feed", "Electron feed", `/${a.slug}/latest.yml`]] : []),
-      ["iconoir-journal", "History", `/${a.slug}/releases`],
-      ...OS.filter(([os]) => a.platforms.some((p) => p.startsWith(os))).map(([, label, icon, alias]) => [
-        icon,
-        `Download for ${label}`,
-        `/${a.slug}/download/${alias}`,
+  // What each channel's subscribers are offered right now. Mirrors
+  // channelsFor in lib/feeds.js: a channel accepts itself and the ones
+  // before it, and the newest release with a build wins.
+  const serving = (except) =>
+    Object.fromEntries(
+      CHANNELS.map((c, i) => [
+        c,
+        S.versions.find((r) => r.version !== except && r.platforms.length && CHANNELS.indexOf(r.channel) <= i)?.version,
       ]),
-    ];
+    );
+  function liveLabel(version) {
+    const now = serving();
+    const on = CHANNELS.filter((c) => now[c] === version);
+    if (!on.length) return "";
+    return on.length === CHANNELS.length ? "Live for everyone" : `Live on ${list(on)}`;
   }
 
-  function renderMain() {
-    const app = S.apps.find((a) => a.slug === S.slug);
-    if (!app) {
-      $("main").innerHTML = `<div class="card flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
-        <i class="iconoir-package text-3xl text-stone-400"></i>
-        <p class="text-sm text-stone-600 dark:text-stone-400">Pick an app on the left, or create one.</p>
-      </div>`;
-      return;
+  // ------------------------------------------------------------------ routing
+
+  async function route() {
+    const turn = ++S.turn;
+    const [slug, tab = "releases", version] = location.hash.slice(1).split("/").map(decodeURIComponent);
+    if (!S.apps.some((a) => a.slug === slug)) {
+      S.slug = null;
+      return overview();
     }
-    const isNew = S.version === "new";
-    const rel = S.release;
-    const rows = links(app)
+    try {
+      if (slug !== S.slug) Object.assign(S, { slug, stale: true, queue: [], links: "stable" });
+      if (S.stale) {
+        const { releases } = await api("GET", `/${slug}/releases`);
+        if (turn !== S.turn) return;
+        Object.assign(S, { versions: releases, stale: false, hits: null, version: null });
+      }
+      S.tab = TABS.some(([t]) => t === tab) ? tab : "releases";
+      if (S.tab === "releases") {
+        const v = version === "new" || S.versions.some((r) => r.version === version) ? version : (S.versions[0]?.version ?? "new");
+        if (v !== S.version) {
+          const release = v === "new" ? null : await api("GET", `/${slug}/releases/${v}`);
+          if (turn !== S.turn) return;
+          Object.assign(S, { version: v, release, ver: "", notes: release?.notes ?? "", channel: release?.channel ?? "stable", note: "", tone: "" });
+        }
+      }
+      if (S.tab === "adoption" && !S.hits) {
+        const { hits } = await api("GET", `/${slug}/stats`);
+        if (turn !== S.turn) return;
+        S.hits = hits;
+      }
+      appView();
+    } catch (err) {
+      $("view").innerHTML = `<p class="card px-5 py-8 text-center text-sm text-seal dark:text-seal-bright">${esc(err.message)}</p>`;
+    }
+  }
+  window.onhashchange = () => {
+    if (S.ours) S.ours = false;
+    else route();
+  };
+
+  // Goes to a place after a write: the app list and the releases are read
+  // again, even when the address did not change.
+  async function go(hash) {
+    S.apps = (await api("GET", "/admin?format=json")).apps;
+    S.stale = true;
+    S.ours = location.hash !== hash && !(hash === "#" && !location.hash);
+    location.hash = hash;
+    await route();
+  }
+
+  // ------------------------------------------------------------------ every app
+
+  function overview() {
+    const rows = S.apps
       .map(
-        ([icon, label, href]) => `<tr class="border-t border-line dark:border-line-dark">
-          <td class="whitespace-nowrap py-1.5 pl-4 pr-4 text-stone-600 dark:text-stone-400"><span class="inline-flex items-center gap-1.5"><i class="${icon} text-base leading-none text-stone-400"></i>${esc(label)}</span></td>
-          <td class="w-full break-all py-1.5 font-mono text-xs"><a class="hover:underline" href="${esc(href)}">${esc(location.origin + href)}</a></td>
-          <td class="py-0.5 pr-2"><button class="icon-btn" data-copy="${esc(location.origin + href)}" title="Copy"><i class="iconoir-copy"></i></button></td>
-        </tr>`,
+        (a) => `<a href="#${esc(a.slug)}" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 border-t border-line px-5 py-3.5 transition first:border-0 hover:bg-stone-50
+                 dark:border-line-dark dark:hover:bg-stone-800/40 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_7rem_5rem_6rem]">
+          <span class="min-w-0"><span class="block truncate font-semibold">${esc(a.name)}</span><span class="muted block truncate font-mono text-xs">${esc(a.slug)}</span></span>
+          <span class="flex items-center gap-2">${
+            a.version ? `<span class="font-mono text-sm">${esc(a.version)}</span>${chip(a.channel)}` : `<span class="text-sm text-stone-400">No release yet</span>`
+          }</span>
+          <span class="muted hidden text-sm sm:block">${a.pub_date ? when(a.pub_date) : ""}</span>
+          <span class="hidden items-center gap-1.5 text-lg text-stone-400 sm:flex">${osIcons(a.platforms)}</span>
+          <span class="muted hidden items-center gap-1.5 text-xs sm:flex"><i class="${a.unlisted ? "iconoir-eye-closed" : "iconoir-eye"} text-sm"></i>${a.unlisted ? "Unlisted" : "Listed"}</span>
+        </a>`,
       )
       .join("");
-
-    $("main").innerHTML = `
-      <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+    $("view").innerHTML = `
+      <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 class="text-2xl font-semibold tracking-tight"><a class="hover:underline" href="/${esc(app.slug)}">${esc(app.name)}</a></h2>
-          <p class="mt-1 font-mono text-sm text-stone-500">${esc(app.slug)}</p>
+          <h1 class="text-2xl font-semibold tracking-tight">Apps</h1>
+          <p class="muted mt-1 text-sm">Open an app to publish a release, see who has updated, or copy its feed URLs.</p>
         </div>
-        <div class="flex items-center gap-3">
-          <label class="flex cursor-pointer items-center gap-2 text-sm text-stone-600 dark:text-stone-400" title="Off keeps it off the home page. Its own page, feeds and downloads still work.">
-            <input type="checkbox" id="listed" class="accent-seal" ${app.unlisted ? "" : "checked"} /> Show on home listing
-          </label>
-          <button class="btn-danger" id="del-app" type="button"><i class="iconoir-trash"></i>Delete app</button>
-        </div>
+        <button class="btn-primary" type="button" data-act="new-app"><i class="iconoir-plus"></i>New app</button>
       </div>
-
-      ${rows ? `<div class="card mb-8 overflow-x-auto"><table class="w-full text-sm"><tbody>${rows}</tbody></table></div>` : ""}
-
-      ${statsPanel()}
-
-      <div class="mb-4 flex flex-wrap items-center gap-2">
-        <span class="mr-1 text-sm text-stone-600 dark:text-stone-400">Versions</span>
-        ${S.versions
-          .map(
-            (r) => `<button data-v="${esc(r.version)}" class="rounded-full border px-3 py-1 font-mono text-xs transition ${
-              r.version === S.version
-                ? "border-seal bg-seal text-white dark:border-seal-bright dark:bg-seal-bright dark:text-stone-950"
-                : "border-line bg-card text-stone-700 hover:border-stone-400 dark:border-line-dark dark:bg-card-dark dark:text-stone-300"
-            }">${esc(r.version)}${r.channel !== "stable" ? `<span class="ml-1.5 opacity-60">${esc(r.channel)}</span>` : ""}<span class="ml-1.5 opacity-60">${r.platforms.length}</span></button>`,
-          )
-          .join("")}
-        <button data-v="new" class="rounded-full border border-dashed px-3 py-1 text-xs transition ${
-          isNew ? "border-seal text-seal dark:border-seal-bright dark:text-seal-bright" : "border-stone-400 text-stone-600 hover:border-stone-500 dark:text-stone-400"
-        }"><i class="iconoir-plus"></i> New version</button>
-      </div>
-
-      <div class="card">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 dark:border-line-dark">
-          ${
-            isNew
-              ? `<div class="flex items-center gap-3"><label class="text-sm text-stone-600 dark:text-stone-400" for="ver">Version</label>
-                 <input class="field !w-36 font-mono" id="ver" placeholder="0.2.0" value="${esc(S.ver)}" />
-                 <span id="ver-parts" class="flex items-end gap-2">${verParts(S.ver)}</span>${channelSelect()}</div>`
-              : `<div class="flex items-center gap-3"><span class="font-mono text-lg font-medium">${esc(rel.version)}</span>
-                 <span class="text-sm text-stone-500">published ${when(rel.pub_date)}</span>${channelSelect()}</div>
-                 <button class="btn-danger" id="unpublish" type="button"><i class="iconoir-bin-minus-in"></i>Unpublish</button>`
-          }
-        </div>
-
-        <div class="grid gap-px bg-line dark:bg-line-dark sm:grid-cols-3">
-          ${OS.map(([os, label, icon]) => osColumn(os, label, icon)).join("")}
-        </div>
-
-        <div class="space-y-4 border-t border-line p-5 dark:border-line-dark">
-          <div id="drop" class="cursor-pointer rounded-md border border-dashed border-stone-400 px-6 py-8 text-center text-sm text-stone-600 transition hover:border-seal hover:bg-seal-soft/40 dark:text-stone-400 dark:hover:border-seal-bright dark:hover:bg-seal-bright/5">
-            <i class="iconoir-cloud-upload text-2xl"></i>
-            <div class="mt-1">Drop installers and their .sig files, or click to choose</div>
-          </div>
-          <input id="picker" type="file" multiple hidden />
-          <div id="queue">${queueTable()}</div>
-          <div>
-            <label class="label" for="notes">Release notes</label>
-            <textarea class="field min-h-20 resize-y" id="notes" placeholder="What changed.">${esc(S.notes)}</textarea>
-          </div>
-          <div class="flex flex-wrap items-center gap-3">
-            <button class="btn-primary" id="publish" type="button"><i class="iconoir-upload"></i><span>Publish</span></button>
-            <p id="status" class="text-sm text-stone-600 dark:text-stone-400">${esc(S.note)}</p>
-          </div>
-        </div>
-      </div>`;
-
-    for (const b of $("main").querySelectorAll("[data-v]")) b.onclick = () => selectVersion(b.dataset.v);
-    $("listed").onchange = async () => {
-      try {
-        await api("PUT", `/${S.slug}`, { unlisted: !$("listed").checked });
-        app.unlisted = !$("listed").checked;
-      } catch (err) {
-        status(err.message, "bad");
-      }
-    };
-    for (const b of $("main").querySelectorAll("[data-rm]")) b.onclick = () => removeArtifact(b.dataset.rm);
-    $("del-app").onclick = () =>
-      guarded(
-        confirmDialog(`Delete ${app.name}?`, "Every release and feed goes with it. Uploaded files stay in the bucket.", "Delete app"),
-        async () => {
-          await api("DELETE", `/${S.slug}`);
-          await loadApps();
-          await selectApp(null);
-        },
-      );
-    if ($("unpublish")) {
-      $("unpublish").onclick = () =>
-        guarded(
-          confirmDialog(`Unpublish ${S.version}?`, "Updaters fall back to the previous release. Uploaded files stay in the bucket.", "Unpublish"),
-          async () => {
-            await api("DELETE", `/${S.slug}/releases/${S.version}`);
-            await loadApps();
-            await selectApp(S.slug);
-          },
-        );
-    }
-    $("drop").onclick = () => $("picker").click();
-    $("picker").onchange = (e) => take(e.target.files);
-    $("drop").ondragover = (e) => {
-      e.preventDefault();
-      $("drop").classList.add("border-seal");
-    };
-    $("drop").ondragleave = () => $("drop").classList.remove("border-seal");
-    $("drop").ondrop = (e) => {
-      e.preventDefault();
-      take(e.dataTransfer.files);
-    };
-    $("publish").onclick = publish;
-    $("notes").oninput = () => (S.notes = $("notes").value);
-    $("channel").onchange = () => (S.channel = $("channel").value);
-    if ($("ver")) {
-      $("ver").oninput = () => {
-        S.ver = $("ver").value;
-        $("ver-parts").innerHTML = verParts(S.ver);
-      };
-    }
-    bindQueue();
-    updatePublish();
+      ${
+        rows
+          ? `<div class="card overflow-hidden">
+              <div class="muted hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_7rem_5rem_6rem] gap-x-6 border-b border-line px-5 py-2 text-xs dark:border-line-dark sm:grid">
+                <span>App</span><span>Latest release</span><span>Published</span><span>Builds</span><span>Home page</span>
+              </div>${rows}</div>`
+          : `<div class="card flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <i class="iconoir-package text-3xl text-stone-400"></i>
+              <p class="muted max-w-sm text-sm">No apps yet. Create one, then drop its installers on the first release.</p>
+              <button class="btn-quiet" type="button" data-act="new-app"><i class="iconoir-plus"></i>New app</button>
+            </div>`
+      }`;
   }
 
-  // Runs fn only after the confirm dialog resolves true; errors land in the
-  // status line instead of the console.
-  const guarded = async (ask, fn) => {
-    if (!(await ask)) return;
-    try {
-      await fn();
-    } catch (err) {
-      status(err.message, "bad");
-    }
-  };
+  // ------------------------------------------------------------------ one app
 
-  // The channel a version is published to. On an existing release the
-  // change goes out with the next publish, which "Save notes" also is.
-  const channelSelect = () =>
-    `<select class="field !w-auto !py-1.5 font-mono text-xs" id="channel" title="Release channel">${CHANNELS.map(
-      (c) => `<option${c === S.channel ? " selected" : ""}>${c}</option>`,
-    ).join("")}</select>`;
+  function appView() {
+    const a = app();
+    $("view").innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="flex min-w-0 flex-wrap items-center gap-x-2.5 text-2xl font-semibold tracking-tight">
+          <a class="font-normal text-stone-400 hover:text-stone-900 dark:hover:text-stone-100" href="#">Apps</a>
+          <span class="font-normal text-stone-300 dark:text-stone-600">/</span>
+          <span class="truncate">${esc(a.name)}</span>
+          ${a.unlisted ? `<span class="chip font-normal tracking-normal">unlisted</span>` : ""}
+        </h1>
+        <a class="btn-quiet !py-1.5" href="/${esc(a.slug)}"><i class="iconoir-open-new-window"></i>Public page</a>
+      </div>
+      <nav class="mt-4 flex gap-1 overflow-x-auto border-b border-line dark:border-line-dark">${TABS.map(
+        ([t, label, icon]) => `<a class="tab" href="#${esc(a.slug)}/${t}" ${t === S.tab ? 'aria-current="page"' : ""}><i class="${icon}"></i>${label}</a>`,
+      ).join("")}</nav>
+      <div class="mt-6">${{ releases, adoption, integrate, settings }[S.tab](a)}</div>`;
+    refresh();
+  }
 
-  // The last 30 days of counts: update checks per day as bars, then checks
-  // and downloads per version. Counts only, which is all Herald keeps.
-  function statsPanel() {
-    const sum = (rows) => rows.reduce((n, h) => n + h.count, 0);
-    const checks = S.hits.filter((h) => h.kind === "check");
-    const downloads = S.hits.filter((h) => h.kind === "download");
-    if (!S.hits.length) return "";
-    const days = [...new Set(S.hits.map((h) => h.day))].sort();
-    const perDay = days.map((d) => sum(checks.filter((h) => h.day === d)));
-    const max = Math.max(1, ...perDay);
-    const week = days.slice(-7);
-    const versions = [...new Set(S.hits.map((h) => h.version))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-    const rows = versions
-      .map((v) => {
-        const label = v ? `<span class="font-mono">${esc(v)}</span>` : `<span class="text-stone-400">version not reported</span>`;
-        const recent = sum(checks.filter((h) => h.version === v && week.includes(h.day)));
-        const got = sum(downloads.filter((h) => h.version === v));
-        return `<tr class="border-t border-line dark:border-line-dark"><td class="py-1.5 pr-4">${label}</td>
-          <td class="py-1.5 pr-4 text-right tabular-nums">${recent}</td><td class="py-1.5 text-right tabular-nums">${got}</td></tr>`;
+  // ------------------------------------------------------------------ releases
+
+  function releases(a) {
+    const rail = S.versions
+      .map((r) => {
+        const live = liveLabel(r.version);
+        const here = r.version === S.version;
+        return `<li class="relative pl-5">
+          <span class="absolute -left-[5px] top-[1.05rem] h-[9px] w-[9px] rounded-full ring-4 ring-paper dark:ring-paper-dark ${
+            live ? "bg-seal dark:bg-seal-bright" : "bg-stone-300 dark:bg-stone-600"
+          }"></span>
+          <a href="#${esc(a.slug)}/releases/${esc(r.version)}" ${here ? 'aria-current="true"' : ""} class="block rounded-md px-3 py-2.5 transition ${
+            here ? "bg-card shadow-sm ring-1 ring-line dark:bg-card-dark dark:ring-line-dark" : "hover:bg-stone-200/60 dark:hover:bg-stone-800/60"
+          }">
+            <span class="flex items-baseline justify-between gap-2"><span class="font-mono text-sm font-medium">${esc(r.version)}</span>
+              <span class="muted text-xs">${when(r.pub_date)}</span></span>
+            <span class="mt-1.5 flex items-center gap-2 text-stone-400">${chip(r.channel)}${osIcons(r.platforms)}</span>
+            ${
+              live
+                ? `<span class="mt-1.5 block text-xs font-medium text-seal dark:text-seal-bright">${live}</span>`
+                : r.platforms.length
+                  ? ""
+                  : `<span class="mt-1.5 block text-xs text-amber-700 dark:text-amber-400">No builds, so not offered</span>`
+            }
+          </a></li>`;
       })
       .join("");
-    return `<div class="card mb-8 p-5">
-      <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 class="text-sm font-semibold text-stone-600 dark:text-stone-400">Last 30 days</h3>
-        <span class="text-xs text-stone-500">${sum(checks)} update checks, ${sum(downloads)} downloads. Counts only, no addresses.</span>
-      </div>
-      <div class="mt-3 flex h-12 items-end gap-px" title="Update checks per day">${perDay
-        .map((n, i) => `<span class="flex-1 rounded-sm bg-seal/70 dark:bg-seal-bright/70" style="height:${Math.max(2, Math.round((n / max) * 100))}%" title="${days[i]}: ${n}"></span>`)
-        .join("")}</div>
-      <table class="mt-4 w-full text-sm"><thead><tr class="text-xs text-stone-500"><th class="pb-1 text-left font-normal">Version in use</th>
-        <th class="pb-1 text-right font-normal">Checks, 7 days</th><th class="pb-1 text-right font-normal">Downloads, 30 days</th></tr></thead>
-        <tbody>${rows}</tbody></table>
+    return `<div class="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+      <aside>
+        <a class="${S.version === "new" ? "btn-quiet" : "btn-primary"} w-full" href="#${esc(a.slug)}/releases/new"><i class="iconoir-plus"></i>New release</a>
+        ${rail ? `<div class="mt-4 py-1 pl-1.5 pr-1 lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto"><ol class="space-y-1 border-l border-line dark:border-line-dark">${rail}</ol></div>` : `<p class="muted mt-4 text-sm">Nothing published yet. The first release starts here.</p>`}
+      </aside>
+      <section class="card min-w-0 transition" id="editor">${editor()}</section>
     </div>`;
   }
 
-  // Major, minor and patch as the server will store them, so "v1.2" reads
-  // back as 1 . 2 . 0 while it is typed. Nothing until the input parses.
-  function verParts(raw) {
-    const v = semver(raw ?? "");
-    if (!v) return "";
-    const [nums, tail] = v.split(/(?=[-+])/);
-    const part = (n, label) =>
-      `<span class="flex flex-col items-center"><span class="font-mono text-sm">${esc(n)}</span><span class="text-[10px] uppercase tracking-wide text-stone-400">${label}</span></span>`;
-    return (
-      nums
-        .split(".")
-        .map((n, i) => part(n, ["major", "minor", "patch"][i]))
-        .join(`<span class="pb-3.5 text-stone-400">.</span>`) +
-      (tail ? `<span class="pb-3.5 font-mono text-xs text-stone-400">${esc(tail)}</span>` : "")
-    );
+  function editor() {
+    const isNew = S.version === "new";
+    const rel = S.release;
+    const live = isNew ? "" : liveLabel(rel.version);
+    return `
+      <div class="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-line p-5 dark:border-line-dark">
+        ${
+          isNew
+            ? `<div><label class="label" for="ver">Version</label>
+               <input class="field !w-44 font-mono" id="ver" placeholder="0.2.0" value="${esc(S.ver)}" autocomplete="off" spellcheck="false" />
+               <p class="mt-1.5 max-w-xs text-xs" id="ver-hint"></p></div>`
+            : `<div><div class="font-mono text-2xl font-medium">${esc(rel.version)}</div>
+               <p class="muted mt-1 text-sm">Published ${when(rel.pub_date)}${live ? `<span class="ml-2 font-medium text-seal dark:text-seal-bright">${live}</span>` : ""}</p></div>`
+        }
+        <div>
+          <span class="label">Channel</span>
+          <div class="seg">${CHANNELS.map((c) => `<button type="button" data-act="channel" data-c="${c}" aria-pressed="${c === S.channel}">${c}</button>`).join("")}</div>
+          <p class="muted mt-1.5 max-w-xs text-xs" id="channel-hint"></p>
+        </div>
+      </div>
+
+      <div class="border-b border-line p-5 dark:border-line-dark">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="heading">Builds</h2>
+          <button class="btn-quiet !py-1.5" type="button" data-act="pick"><i class="iconoir-plus"></i>Add files</button>
+        </div>
+        <div id="builds">${builds()}</div>
+        <input id="picker" type="file" multiple hidden />
+      </div>
+
+      <div class="p-5">
+        <label class="heading mb-1.5 block" for="notes">Release notes</label>
+        <textarea class="field min-h-24 resize-y" id="notes" placeholder="What changed.">${esc(S.notes)}</textarea>
+        <p class="muted mt-1.5 text-xs">Shown on the app's page and sent to updaters with the release.</p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 rounded-b-lg border-t border-line bg-stone-50 px-5 py-4 dark:border-line-dark dark:bg-stone-900/40">
+        <button class="btn-primary" id="publish" type="button" data-act="publish"><i class="iconoir-upload"></i><span></span></button>
+        <p class="min-w-0 flex-1 text-sm" id="status"></p>
+        ${isNew ? "" : `<button class="btn-danger" type="button" data-act="unpublish"><i class="iconoir-bin-minus-in"></i>Unpublish</button>`}
+      </div>`;
   }
 
-  function osColumn(os, label, icon) {
-    const have = (S.release?.artifacts ?? []).filter((a) => a.platform.startsWith(os));
-    const queued = S.queue.filter((q) => q.platform.startsWith(os)).length;
-    return `<div class="bg-card p-4 dark:bg-card-dark">
-      <div class="mb-3 flex items-center gap-2 text-sm font-medium"><i class="${icon} text-lg"></i>${label}
-        ${queued ? `<span class="ml-auto text-xs text-seal dark:text-seal-bright">+${queued} queued</span>` : ""}</div>
-      ${
-        have.length
-          ? have
-              .map(
-                (a) => `<div class="group flex items-start gap-2 py-1.5 text-sm">
-                  <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <span class="chip">${esc(a.platform.slice(os.length + 1))}</span>
-                      ${a.signed ? `<span class="text-[11px] text-emerald-700 dark:text-emerald-400"><i class="iconoir-shield-check"></i> Tauri</span>` : ""}
-                      ${a.hashed ? `<span class="text-[11px] text-emerald-700 dark:text-emerald-400"><i class="iconoir-check-circle"></i> Electron</span>` : ""}
-                    </div>
-                    <a class="mt-0.5 block truncate font-mono text-xs text-stone-600 hover:underline dark:text-stone-400" href="${esc(a.url)}" title="${esc(a.url)}">${esc(a.url.split("/").pop())}</a>
-                    <div class="text-xs text-stone-400">${a.size ? size(a.size) : "size unknown"}</div>
-                  </div>
-                  <button class="icon-btn opacity-0 transition group-hover:opacity-100 focus:opacity-100" data-rm="${esc(a.platform)}" title="Remove ${esc(a.platform)}"><i class="iconoir-xmark"></i></button>
-                </div>`,
-              )
-              .join("")
-          : `<p class="text-sm text-stone-400">No build yet</p>`
-      }
+  // Which feeds a build shows up in. A signature puts it in Tauri's, and in
+  // Sparkle's on macOS; a hash and a size put it in electron-updater's.
+  function feeds(platform, signed, hashed) {
+    const yes = (label) => `<span class="whitespace-nowrap text-emerald-700 dark:text-emerald-400"><i class="iconoir-check"></i>${label}</span>`;
+    const marks = [signed && yes("Tauri"), signed && platform.startsWith("darwin") && yes("Sparkle"), hashed && yes("Electron")].filter(Boolean);
+    return marks.join("") || `<span class="text-stone-400">Download only</span>`;
+  }
+
+  // One list for what the release has and what is about to be added, by
+  // platform, so a file that replaces a build sits right above it.
+  function builds() {
+    const have = S.release?.artifacts ?? [];
+    const queued = S.queue.map((q, i) => {
+      const os = osOf(q.platform);
+      const replaces = have.some((a) => a.platform === q.platform);
+      return [
+        q.platform,
+        0,
+        `<li class="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-seal-soft/50 px-3 py-2.5 text-xs dark:bg-seal-bright/[0.07]">
+          <i class="${os ? os[2] : "iconoir-question-mark"} text-lg text-stone-500"></i>
+          <select data-i="${i}" title="Platform" class="field !w-44 !py-1 font-mono text-xs ${q.platform ? "" : "!border-seal dark:!border-seal-bright"}">${["", ...KEYS]
+            .map((k) => `<option value="${k}"${k === q.platform ? " selected" : ""}>${k || "Choose platform"}</option>`)
+            .join("")}</select>
+          <span class="min-w-0 flex-1 basis-40 truncate font-mono" title="${esc(q.file.name)}">${esc(q.file.name)}</span>
+          <span class="muted whitespace-nowrap">${size(q.file.size)}</span>
+          <span class="flex items-center gap-3">${q.platform ? feeds(q.platform, Boolean(q.sig), true) : ""}${
+            q.sig || !q.platform ? "" : `<span class="whitespace-nowrap text-amber-700 dark:text-amber-400" title="Drop the matching .sig file to put this build in the Tauri feed">No .sig</span>`
+          }</span>
+          <span class="w-20 whitespace-nowrap text-right font-medium text-seal dark:text-seal-bright">${esc(q.state ?? (replaces ? "Replaces" : "New"))}</span>
+          <button class="icon-btn" type="button" data-act="unqueue" data-i="${i}" title="Take ${esc(q.file.name)} out"><i class="iconoir-xmark"></i></button>
+        </li>`,
+      ];
+    });
+    const live = have.map((a) => [
+      a.platform,
+      1,
+      `<li class="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2.5 text-xs ${S.queue.some((q) => q.platform === a.platform) ? "opacity-50" : ""}">
+        <i class="${osOf(a.platform)?.[2] ?? "iconoir-question-mark"} text-lg text-stone-500"></i>
+        <span class="w-44 font-mono">${esc(a.platform)}</span>
+        <a class="min-w-0 flex-1 basis-40 truncate font-mono hover:underline" href="${esc(a.url)}" title="${esc(a.url)}">${esc(a.url.split("/").pop())}</a>
+        <span class="muted whitespace-nowrap">${a.size ? size(a.size) : ""}</span>
+        <span class="flex items-center gap-3">${feeds(a.platform, a.signed, a.hashed)}</span>
+        <span class="w-20"></span>
+        <button class="icon-btn" type="button" data-act="remove" data-platform="${esc(a.platform)}" title="Remove ${esc(a.platform)} from this release"><i class="iconoir-xmark"></i></button>
+      </li>`,
+    ]);
+    const rows = [...queued, ...live].sort((x, y) => x[0].localeCompare(y[0]) || x[1] - y[1]).map((r) => r[2]);
+    const missing = OS.filter(([os]) => ![...have, ...S.queue].some((x) => x.platform.startsWith(os))).map(([, label]) => label);
+    return `
+      ${rows.length ? `<ul class="mt-3 divide-y divide-line overflow-hidden rounded-md border border-line dark:divide-line-dark dark:border-line-dark">${rows.join("")}</ul>` : ""}
+      <button type="button" data-act="pick" class="muted mt-3 flex w-full flex-col items-center rounded-md border border-dashed border-stone-300 px-6 text-center text-sm transition hover:border-seal hover:bg-seal-soft/40
+               dark:border-stone-700 dark:hover:border-seal-bright dark:hover:bg-seal-bright/5 ${rows.length ? "py-3" : "py-10"}">
+        ${rows.length ? "" : `<i class="iconoir-cloud-upload mb-1 text-2xl"></i>`}
+        Drop installers and their .sig files anywhere here, or click to choose
+      </button>
+      ${rows.length && missing.length ? `<p class="muted mt-2 text-xs">No build for ${list(missing).replace(" and ", " or ")}.</p>` : ""}`;
+  }
+
+  // Everything in the editor that depends on what was typed or queued, set
+  // in place so typing never loses focus to a rebuild.
+  function refresh() {
+    if (!$("publish")) return;
+    const isNew = S.version === "new";
+    const n = S.queue.length;
+    const v = isNew ? semver(S.ver) : S.version;
+    const dirty = !isNew && (S.notes !== (S.release.notes ?? "") || S.channel !== S.release.channel);
+
+    $("publish").lastElementChild.textContent = isNew ? `Publish ${v ?? "release"}` : n ? `Publish ${plural(n, "build")} to ${v}` : "Save changes";
+    $("publish").disabled = S.busy || (isNew ? !v || !n : !n && !dirty);
+    for (const b of document.querySelectorAll('[data-act="channel"]')) b.setAttribute("aria-pressed", b.dataset.c === S.channel);
+
+    const hint = $("ver-hint");
+    if (hint) {
+      const typed = S.ver.trim();
+      const [tone, text] = !typed
+        ? ["muted", "Three numbers, like 0.2.0. Filled in from a file name that carries one."]
+        : !v
+          ? ["text-seal dark:text-seal-bright", "Not a version yet. Use three numbers, like 0.2.0."]
+          : S.versions.some((r) => r.version === v)
+            ? ["text-amber-700 dark:text-amber-400", `${v} is already published. These builds will be added to it.`]
+            : typed !== v
+              ? ["muted", `Stored as ${v}.`]
+              : ["muted", ""];
+      hint.className = `mt-1.5 max-w-xs text-xs ${tone}`;
+      hint.textContent = text;
+    }
+
+    const stable = serving(isNew ? null : S.version).stable;
+    $("channel-hint").textContent =
+      S.channel === "stable"
+        ? "Offered to everyone, whichever channel they follow."
+        : `Offered only to apps following ${list(CHANNELS.slice(CHANNELS.indexOf(S.channel)))}. Stable ${stable ? `stays on ${stable}` : "is offered nothing"}.`;
+
+    const idle = S.busy ? "" : isNew && !n ? "Add at least one build to publish." : isNew && !v ? "Give the release a version." : !n && !dirty ? "" : !isNew && !n ? "Unsaved changes." : "";
+    const el = $("status");
+    el.textContent = S.note || idle;
+    el.className = "min-w-0 flex-1 text-sm " + (S.note && S.tone === "bad" ? "text-seal dark:text-seal-bright" : S.note && S.tone === "ok" ? "text-emerald-700 dark:text-emerald-400" : "muted");
+  }
+  const status = (msg, tone = "") => {
+    if ($("status")) {
+      S.note = msg;
+      S.tone = tone;
+      return refresh();
+    }
+    $("toast").textContent = msg;
+    $("toast").hidden = !msg;
+    clearTimeout(S.toast);
+    S.toast = setTimeout(() => ($("toast").hidden = true), 6000);
+  };
+
+  // ------------------------------------------------------------------ adoption
+
+  // The last 30 days of counts. Each day is one bar of update checks, split
+  // into apps already on the newest version and everything older, which is
+  // what a rollout looks like. Counts only, which is all Herald keeps.
+  function adoption() {
+    const hits = S.hits ?? [];
+    if (!hits.length) {
+      return `<div class="card flex flex-col items-center gap-3 px-6 py-16 text-center">
+        <i class="iconoir-graph-up text-3xl text-stone-400"></i>
+        <p class="muted max-w-sm text-sm">No update checks or downloads in the last 30 days. Counts start once an installed app reads a feed, or someone downloads a build hosted here.</p>
+      </div>`;
+    }
+    const sum = (rows) => rows.reduce((n, h) => n + h.count, 0);
+    const checks = hits.filter((h) => h.kind === "check");
+    const downloads = hits.filter((h) => h.kind === "download");
+    const days = Array.from({ length: 30 }, (_, i) => new Date(Date.now() - (29 - i) * 86400000).toISOString().slice(0, 10));
+    const week = days.slice(-7);
+    const versions = [...new Set(hits.map((h) => h.version))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    const top = versions.find(Boolean);
+    const reported = checks.filter((h) => h.version && week.includes(h.day));
+    const share = top && sum(reported) ? Math.round((sum(reported.filter((h) => h.version === top)) / sum(reported)) * 100) : null;
+
+    const perDay = days.map((d) => {
+      const rows = checks.filter((h) => h.day === d);
+      const on = sum(rows.filter((h) => top && h.version === top));
+      return [on, sum(rows) - on];
+    });
+    const max = Math.max(1, ...perDay.map(([on, rest]) => on + rest));
+    const bars = perDay
+      .map(
+        ([on, rest], i) => `<span class="flex h-full flex-1 flex-col justify-end gap-px" title="${days[i]}: ${plural(on + rest, "check")}${top ? `, ${on} on ${esc(top)}` : ""}">
+          <span class="rounded-t-sm bg-stone-300 dark:bg-stone-600" style="height:${(rest / max) * 100}%"></span>
+          <span class="bg-seal dark:bg-seal-bright ${rest ? "" : "rounded-t-sm"}" style="height:${(on / max) * 100}%"></span>
+        </span>`,
+      )
+      .join("");
+
+    const weekTotal = Math.max(1, sum(checks.filter((h) => week.includes(h.day))));
+    const rows = versions
+      .map((v) => {
+        const recent = sum(checks.filter((h) => h.version === v && week.includes(h.day)));
+        return `<tr class="border-t border-line dark:border-line-dark">
+          <td class="py-2 pr-4">${v ? `<span class="font-mono">${esc(v)}</span>` : `<span class="text-stone-400">Version not reported</span>`}</td>
+          <td class="w-1/2 py-2 pr-4"><span class="flex items-center gap-3"><span class="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
+            <span class="block h-full rounded-full ${v === top ? "bg-seal dark:bg-seal-bright" : "bg-stone-400 dark:bg-stone-500"}" style="width:${(recent / weekTotal) * 100}%"></span></span>
+            <span class="w-12 text-right tabular-nums">${recent}</span></span></td>
+          <td class="py-2 text-right tabular-nums">${sum(downloads.filter((h) => h.version === v))}</td></tr>`;
+      })
+      .join("");
+
+    const figure = (n, label) => `<div><div class="text-2xl font-semibold tabular-nums tracking-tight">${n}</div><div class="muted mt-0.5 text-xs">${label}</div></div>`;
+    return `<div class="card p-5">
+        <div class="flex flex-wrap gap-x-12 gap-y-4">
+          ${figure(sum(checks).toLocaleString(), "Update checks, 30 days")}
+          ${figure(sum(downloads).toLocaleString(), "Downloads, 30 days")}
+          ${share === null ? "" : figure(share + "%", `On ${esc(top)}, of apps checking this week`)}
+        </div>
+        <div class="mt-6 flex h-28 items-end gap-0.5">${bars}</div>
+        <div class="muted mt-1.5 flex justify-between text-[11px]"><span>${when(days[0])}</span><span>Today</span></div>
+        <div class="muted mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+          <span>Update checks per day</span>
+          ${top ? `<span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm bg-seal dark:bg-seal-bright"></span>Already on ${esc(top)}</span>
+          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm bg-stone-300 dark:bg-stone-600"></span>Older, or version not reported</span>` : ""}
+        </div>
+      </div>
+      <div class="card mt-6 px-5 py-4">
+        <table class="w-full text-sm"><thead><tr class="muted text-xs"><th class="pb-2 text-left font-normal">Version in use</th>
+          <th class="pb-2 text-left font-normal">Checks, 7 days</th><th class="pb-2 text-right font-normal">Downloads, 30 days</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+      </div>
+      <p class="muted mt-4 text-xs">Counts only: one number per day, kind and version. No addresses, nothing per person.</p>`;
+  }
+
+  // ------------------------------------------------------------------ integrate
+
+  // Every address this app answers on, grouped by who pastes it where. One
+  // that the latest release cannot back yet is shown with what it is missing,
+  // never hidden, so a quiet updater has an explanation.
+  function integrate(a) {
+    const q = S.links === "stable" ? "" : `?channel=${S.links}`;
+    const has = (os) => a.platforms.some((p) => p.startsWith(os));
+    const row = (icon, label, path, missing, plain) =>
+      `<li class="flex flex-wrap items-center gap-x-4 gap-y-0.5 px-4 py-2 text-sm">
+        <span class="muted inline-flex w-48 shrink-0 items-center gap-2"><i class="${icon} text-base text-stone-400"></i>${label}</span>
+        ${
+          missing
+            ? `<span class="flex-1 py-1.5 text-xs text-stone-400">${missing}</span>`
+            : `${plain ? `<span class="min-w-0 flex-1 break-all font-mono text-xs">${esc(ORIGIN + path)}</span>` : `<a class="min-w-0 flex-1 break-all font-mono text-xs hover:underline" href="${esc(path)}">${esc(ORIGIN + path)}</a>`}
+               <button class="icon-btn" type="button" data-copy="${esc(ORIGIN + path)}" title="Copy"><i class="iconoir-copy"></i></button>`
+        }
+      </li>`;
+    const group = (title, about, rows) =>
+      `<section class="mt-8 first:mt-0"><h2 class="heading">${title}</h2><p class="muted mt-1 max-w-2xl text-sm">${about}</p>
+        <ul class="card mt-3 divide-y divide-line dark:divide-line-dark">${rows.join("")}</ul></section>`;
+    const unsigned = a.version ? "Needs a build published with its .sig file." : "Nothing published yet.";
+    const unhashed = a.version ? "Needs a build uploaded here, or published with a sha512 and a size." : "Nothing published yet.";
+    // Built from pieces: a literal double brace in this file would be read as a template placeholder.
+    const slot = (name) => "{" + "{" + name + "}" + "}";
+    const badge = `[![Latest release](${ORIGIN}/${a.slug}/badge.svg${q})](${ORIGIN}/${a.slug}${q})`;
+
+    return `
+      <div class="mb-6 flex flex-wrap items-center gap-3">
+        <div class="seg">${CHANNELS.map((c) => `<button type="button" data-act="links" data-c="${c}" aria-pressed="${c === S.links}">${c}</button>`).join("")}</div>
+        <p class="muted text-sm">${S.links === "stable" ? "Addresses for stable, the default." : `Addresses that follow ${S.links}: the newest release up to that channel.`}</p>
+      </div>
+      ${group("Updater feeds", "What the app itself polls. Paste one into the updater's config once; it serves every release after that.", [
+        row("iconoir-rss-feed", "Tauri endpoint", `/${a.slug}/${slot("target")}/${slot("arch")}/${slot("current_version")}${q}`, !a.signed && unsigned, true),
+        row("iconoir-rss-feed", "Tauri, static file", `/${a.slug}/latest.json${q}`, !a.signed && unsigned),
+        row("iconoir-rss-feed", "Electron, publish url", `/${a.slug}`, !a.hashed && unhashed),
+        ...[["windows", "latest.yml"], ["darwin", "latest-mac.yml"], ["linux", "latest-linux.yml"]]
+          .filter(([os]) => a.hashed && has(os))
+          .map(([, file]) => row("iconoir-page", `Electron, ${file}`, `/${a.slug}/${file}${q}`)),
+        row("iconoir-rss-feed", "Sparkle appcast", `/${a.slug}/appcast.xml${q}`, !has("darwin") && (a.version ? "Needs a macOS build." : "Nothing published yet.")),
+      ])}
+      ${group("Download links", "For a site or a README. Each always redirects to the newest build, so the markup never changes.", [
+        row("iconoir-app-window", "App page", `/${a.slug}${q}`),
+        ...OS.map(([os, label, icon, alias]) => row(icon, `Download for ${label}`, `/${a.slug}/download/${alias}${q}`, !has(os) && `No ${label} build in the latest release.`)),
+      ])}
+      <section class="mt-8"><h2 class="heading">Badge</h2><p class="muted mt-1 text-sm">The current version, linked to the app's page.</p>
+        <div class="card mt-3 flex flex-wrap items-center gap-4 px-4 py-3">
+          <img class="h-5" src="/${esc(a.slug)}/badge.svg${q}" alt="Latest release badge" />
+          <code class="min-w-0 flex-1 basis-64 break-all font-mono text-xs">${esc(badge)}</code>
+          <button class="icon-btn" type="button" data-copy="${esc(badge)}" title="Copy"><i class="iconoir-copy"></i></button>
+        </div></section>
+      ${group("Data", "The same releases as JSON, for a changelog rendered somewhere else.", [row("iconoir-code-brackets", "Release history", `/${a.slug}/releases`)])}`;
+  }
+
+  // ------------------------------------------------------------------ settings
+
+  function settings(a) {
+    return `<div class="card max-w-2xl divide-y divide-line dark:divide-line-dark">
+      <form class="p-5" id="rename">
+        <label class="heading mb-1.5 block" for="set-name">Name</label>
+        <div class="flex gap-2"><input class="field" id="set-name" value="${esc(a.name)}" required />
+          <button class="btn-quiet shrink-0" type="submit">Save name</button></div>
+        <p class="muted mt-1.5 text-xs" id="set-note">Shown on the home page and on the app's own page.</p>
+      </form>
+      <div class="p-5">
+        <div class="heading mb-1.5">Slug</div>
+        <div class="flex items-center gap-2"><code class="font-mono text-sm">${esc(a.slug)}</code>
+          <button class="icon-btn" type="button" data-copy="${esc(a.slug)}" title="Copy"><i class="iconoir-copy"></i></button></div>
+        <p class="muted mt-1 text-xs">Part of every feed and download URL that installed apps already poll, so it is fixed.</p>
+      </div>
+      <div class="p-5">
+        <label class="flex cursor-pointer items-center gap-2.5 text-sm font-semibold">
+          <input type="checkbox" id="listed" class="h-4 w-4 accent-seal" ${a.unlisted ? "" : "checked"} /> List on the home page</label>
+        <p class="muted mt-1.5 text-xs">Off keeps it out of the home page and its JSON. Its own page, feeds and downloads still answer to anyone with the slug: a deterrent, not a lock.</p>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-4 p-5">
+        <div><div class="heading">Delete this app</div>
+          <p class="muted mt-1 text-xs">Every release, feed and count goes with it. Uploaded files stay in the bucket.</p></div>
+        <button class="btn-danger border border-seal/30 dark:border-seal-bright/30" type="button" data-act="delete-app"><i class="iconoir-trash"></i>Delete app</button>
+      </div>
     </div>`;
   }
 
@@ -413,51 +610,13 @@
       const m = S.queue[0]?.file.name.match(/(\d+\.\d+(\.\d+)?)/);
       if (m) S.ver = m[1];
     }
-    renderMain();
+    S.note = "";
+    appView();
   }
-  function queueTable() {
-    if (!S.queue.length) return "";
-    return `<table class="w-full text-sm"><tbody>${S.queue
-      .map(
-        (r, i) => `<tr class="border-t border-line first:border-0 dark:border-line-dark">
-          <td class="break-all py-2 pr-3 font-mono text-xs">${esc(r.file.name)}</td>
-          <td class="whitespace-nowrap py-2 pr-3 text-xs text-stone-500">${size(r.file.size)}</td>
-          <td class="whitespace-nowrap py-2 pr-3 text-xs">${r.sig ? `<span class="text-emerald-700 dark:text-emerald-400"><i class="iconoir-shield-check"></i> signed</span>` : `<span class="text-stone-400">no .sig</span>`}</td>
-          <td class="py-1 pr-2"><select data-i="${i}" class="field !w-auto !py-1 font-mono text-xs">${["", ...KEYS]
-            .map((k) => `<option${k === r.platform ? " selected" : ""}>${k || "choose platform"}</option>`)
-            .join("")}</select></td>
-          <td class="py-1 text-right"><button class="icon-btn" data-x="${i}" title="Remove"><i class="iconoir-xmark"></i></button></td>
-        </tr>`,
-      )
-      .join("")}</tbody></table>`;
+  function requeue() {
+    $("builds").innerHTML = builds();
+    refresh();
   }
-  function bindQueue() {
-    for (const s of $("queue").querySelectorAll("select")) {
-      s.onchange = () => {
-        S.queue[s.dataset.i].platform = s.value === "choose platform" ? "" : s.value;
-        renderMain();
-      };
-    }
-    for (const b of $("queue").querySelectorAll("[data-x]")) {
-      b.onclick = () => {
-        S.queue.splice(b.dataset.x, 1);
-        renderMain();
-      };
-    }
-  }
-  function updatePublish() {
-    const n = S.queue.length;
-    const label = S.version === "new" ? "Publish new version" : n ? `Publish ${n} file${n > 1 ? "s" : ""} to ${S.version}` : "Save notes";
-    $("publish").lastElementChild.textContent = label;
-    $("publish").disabled = S.busy || (S.version === "new" && !n);
-  }
-  const status = (msg, tone) => {
-    S.note = msg;
-    const el = $("status");
-    if (!el) return;
-    el.textContent = msg;
-    el.className = "text-sm " + (tone === "bad" ? "text-seal dark:text-seal-bright" : tone === "ok" ? "text-emerald-700 dark:text-emerald-400" : "text-stone-600 dark:text-stone-400");
-  };
 
   // ------------------------------------------------------------------ actions
 
@@ -468,50 +627,181 @@
 
   async function publish() {
     const version = S.version === "new" ? semver(S.ver) : S.version;
-    if (!version) return status("Version must be semver, for example 0.2.0.", "bad");
+    if (!version) return status("Version must be three numbers, for example 0.2.0.", "bad");
     if (S.queue.some((r) => !r.platform)) return status("Choose a platform for every file.", "bad");
+    const n = S.queue.length;
     S.busy = true;
-    updatePublish();
     try {
       const artifacts = {};
       for (const r of S.queue) {
-        status(`Hashing ${r.file.name}`);
+        r.state = "Hashing";
+        requeue();
         const hash = await sha512(r.file);
-        status(`Uploading ${r.file.name} (${size(r.file.size)})`);
+        r.state = "Uploading";
+        requeue();
         const out = await api("PUT", `/${S.slug}/upload/${version}/${encodeURIComponent(r.file.name)}`, r.file, { "x-herald-sha512": hash });
         artifacts[r.platform] = { url: out.url, sha512: hash, size: r.file.size };
         if (r.sig) artifacts[r.platform].signature = (await r.sig.text()).trim();
+        r.state = "Uploaded";
+        requeue();
       }
-      status("Publishing");
+      status(n ? "Publishing" : "Saving");
       await api("POST", `/${S.slug}/releases`, { version, notes: S.notes, channel: S.channel, artifacts });
       S.queue = [];
-      await loadApps();
-      S.versions = (await api("GET", `/${S.slug}/releases`)).releases;
-      await selectVersion(version);
-      status(`Published ${version}.`, "ok");
+      S.busy = false;
+      S.version = null;
+      await go(`#${S.slug}/releases/${version}`);
+      status(n ? `Published ${version}. ${liveLabel(version) || "Not the newest on its channel, so not offered"}.` : "Saved.", "ok");
+    } catch (err) {
+      for (const r of S.queue) delete r.state;
+      S.busy = false;
+      requeue();
+      status(err.message, "bad");
+    }
+  }
+
+  // Runs fn only after the confirm dialog resolves true; errors land in the
+  // status line instead of the console.
+  const guarded = async (ask, fn) => {
+    if (!(await ask)) return;
+    try {
+      await fn();
     } catch (err) {
       status(err.message, "bad");
     }
-    S.busy = false;
-    updatePublish();
-  }
+  };
 
-  const removeArtifact = (platform) =>
-    guarded(
-      confirmDialog(`Remove ${platform} from ${S.version}?`, "Its feed stops offering this platform. The uploaded file stays in the bucket.", "Remove"),
-      async () => {
-        await api("DELETE", `/${S.slug}/releases/${S.version}/${platform}`);
-        await loadApps();
-        S.versions = (await api("GET", `/${S.slug}/releases`)).releases;
-        if (S.versions.some((r) => r.version === S.version)) await selectVersion(S.version);
-        else await selectApp(S.slug);
-      },
-    );
+  const ACTIONS = {
+    "new-app": () => {
+      $("app-form").reset();
+      $("app-error").hidden = true;
+      delete $("app-slug").dataset.typed;
+      $("slug-preview").textContent = `${ORIGIN}/`;
+      $("new-app").showModal();
+      $("app-name").focus();
+    },
+    "close-new-app": () => $("new-app").close(),
+    pick: () => $("picker").click(),
+    publish,
+    channel: (b) => {
+      S.channel = b.dataset.c;
+      S.note = "";
+      refresh();
+    },
+    links: (b) => {
+      S.links = b.dataset.c;
+      appView();
+    },
+    unqueue: (b) => {
+      S.queue.splice(b.dataset.i, 1);
+      requeue();
+    },
+    remove: (b) =>
+      guarded(
+        confirmDialog(`Remove ${b.dataset.platform} from ${S.version}?`, "Feeds stop offering this platform. The uploaded file stays in the bucket.", "Remove"),
+        async () => {
+          await api("DELETE", `/${S.slug}/releases/${S.version}/${b.dataset.platform}`);
+          S.version = null;
+          await go(location.hash);
+        },
+      ),
+    unpublish: () => {
+      const next = serving(S.version);
+      const falls = liveLabel(S.version) ? ` Apps on ${S.release.channel} fall back to ${next[S.release.channel] ?? "nothing"}.` : "";
+      return guarded(confirmDialog(`Unpublish ${S.version}?`, `It leaves every feed and the app's page.${falls} Uploaded files stay in the bucket.`, "Unpublish"), async () => {
+        await api("DELETE", `/${S.slug}/releases/${S.version}`);
+        await go(`#${S.slug}`);
+      });
+    },
+    "delete-app": () =>
+      guarded(confirmDialog(`Delete ${app().name}?`, "Every release, feed and count goes with it. Installed apps stop hearing about updates.", "Delete app"), async () => {
+        await api("DELETE", `/${S.slug}`);
+        await go("#");
+      }),
+  };
 
-  // ------------------------------------------------------------------ boot
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act]");
+    if (b && !b.disabled) ACTIONS[b.dataset.act]?.(b);
+  });
 
-  renderApps();
-  const [slug, version] = location.hash.slice(1).split("/");
-  if (slug && S.apps.some((a) => a.slug === slug)) selectApp(slug, version || undefined);
-  else renderMain();
+  document.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.id === "ver") S.ver = t.value;
+    else if (t.id === "notes") S.notes = t.value;
+    else if (t.id === "app-slug") t.dataset.typed = 1;
+    else if (t.id === "app-name" && !$("app-slug").dataset.typed) {
+      $("app-slug").value = t.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 63);
+    }
+    if (t.id === "ver" || t.id === "notes") {
+      S.note = "";
+      refresh();
+    }
+    if (t.id === "app-slug" || t.id === "app-name") $("slug-preview").textContent = `${ORIGIN}/${$("app-slug").value}`;
+  });
+
+  document.addEventListener("change", async (e) => {
+    const t = e.target;
+    if (t.id === "picker") take(t.files);
+    else if (t.matches("#builds select")) {
+      S.queue[t.dataset.i].platform = t.value;
+      requeue();
+    } else if (t.id === "listed") {
+      try {
+        await api("PUT", `/${S.slug}`, { unlisted: !t.checked });
+        app().unlisted = !t.checked;
+        appView();
+      } catch (err) {
+        t.checked = !t.checked;
+        $("set-note").textContent = err.message;
+      }
+    }
+  });
+
+  document.addEventListener("submit", async (e) => {
+    if (e.target.id !== "rename" && e.target.id !== "app-form") return;
+    e.preventDefault();
+    if (e.target.id === "rename") {
+      try {
+        await api("PUT", `/${S.slug}`, { name: $("set-name").value.trim() });
+        await go(location.hash);
+        $("set-note").textContent = "Saved.";
+      } catch (err) {
+        $("set-note").textContent = err.message;
+      }
+      return;
+    }
+    const slug = $("app-slug").value.trim();
+    const fail = (msg) => {
+      $("app-error").textContent = msg;
+      $("app-error").hidden = false;
+    };
+    // The route behind this creates or renames, so a slug that exists must stop here.
+    if (S.apps.some((a) => a.slug === slug)) return fail(`An app with the slug ${slug} already exists.`);
+    try {
+      await api("PUT", `/${slug}`, { name: $("app-name").value.trim() || slug, unlisted: !$("app-listed").checked });
+      $("new-app").close();
+      await go(`#${slug}/releases/new`);
+    } catch (err) {
+      fail(err.message);
+    }
+  });
+
+  // Builds can be dropped anywhere on the page while a release is open.
+  const lit = ["ring-2", "ring-seal/40", "dark:ring-seal-bright/40"];
+  document.addEventListener("dragover", (e) => {
+    if (!$("editor")) return;
+    e.preventDefault();
+    $("editor").classList.add(...lit);
+  });
+  document.addEventListener("dragleave", (e) => {
+    if (!e.relatedTarget) $("editor")?.classList.remove(...lit);
+  });
+  document.addEventListener("drop", (e) => {
+    if (!$("editor")) return;
+    e.preventDefault();
+    take(e.dataTransfer.files);
+  });
+
+  route();
 </script>
