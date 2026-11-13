@@ -5,8 +5,10 @@ database, one R2 bucket, any number of desktop apps.
 
 ![Herald](assets/screenshot.png)
 
-Publishing is a picker, not a form: choose the app, choose or add the version,
-drop the builds. Each release shows what it has per OS.
+A visitor gets one page per app: a download button for their system, every
+file, and the release history. The operator gets the admin: open an app, start
+a release, drop the builds. Each release shows which channels it is live on
+and which updater feeds every build shows up in.
 
 ![Publishing in Herald](assets/screenshot-admin.png)
 
@@ -66,11 +68,11 @@ scripts, the two stylesheet hosts, and nothing else, and that forbids framing.
 | Route | What it does |
 |-------|--------------|
 | `GET /` | App index. `?format=json` for the same data. Unlisted apps are left out |
-| `GET /:slug` | One app: its links and every release with notes. Works for unlisted apps too |
+| `GET /:slug` | One app: a download button per OS with the visitor's own promoted, every file, and every release with notes. Works for unlisted apps too |
 | `GET /about` | What Herald is, in a page |
 | `GET /login`, `POST /login`, `POST /logout` | Sign in with `ADMIN_USER` and `ADMIN_PASSWORD` |
 | `GET /demo` | A sandbox session over `demo/*.json`. Only when the `DEMO` var is set |
-| `GET /admin` | Publishing UI: pick an app, pick or add a version, drop builds. Redirects to `/login` without a session |
+| `GET /admin` | The operator's side: every app, then per app its releases, adoption, feed URLs and settings. Redirects to `/login` without a session |
 | `PUT /:slug` | Create an app, rename it, or toggle it. Body `{"name": "...", "unlisted": true}`, either field optional |
 | `DELETE /:slug` | Delete an app and every release |
 | `PUT /:slug/upload/:version/:file` | Store an artifact in R2, returns its public URL |
@@ -79,15 +81,15 @@ scripts, the two stylesheet hosts, and nothing else, and that forbids framing.
 | `GET /:slug/:target/:arch/:version` | Tauri templated feed, `204` when the client is current |
 | `GET /:slug/latest.yml` | electron-updater, Windows. Also `latest-mac.yml`, `latest-linux.yml` |
 | `GET /:slug/appcast.xml` | Sparkle feed for macOS, universal build first |
-| `GET /:slug/download` | Download page: a button per OS, the visitor's own promoted, every file, a badge |
+| `GET /:slug/download` | `302` to `/:slug`, which is the download page |
 | `GET /:slug/badge.svg` | The latest version as a flat badge for a README |
 | `GET /:slug/stats` | Counts for the last 30 days. Requires a session or the token |
 | `GET /:slug/releases` | Release history, newest first, up to 100. Enough for a changelog |
 | `GET /:slug/releases/:version` | One release with its artifacts and whether each is signed or hashed |
 | `GET /:slug/download/:platform` | `302` to the artifact. Takes `windows`, `macos`, `linux`, or an exact key |
 
-Every feed, badge and download route takes `?channel=beta` or `?channel=nightly`.
-Without it, stable.
+Every feed, badge and download route takes `?channel=beta` or `?channel=nightly`,
+and so does the app's page. Without it, stable.
 | `POST /:slug/releases` | Publish. Artifacts merge per platform; with none, only the notes and channel change |
 | `DELETE /:slug/releases/:version` | Unpublish |
 | `DELETE /:slug/releases/:version/:platform` | Remove one artifact from a release |
@@ -160,8 +162,10 @@ when unsaid. A client follows a channel by adding `?channel=` to its feed URL,
 and accepts that channel and every one before it: beta sees stable and beta,
 nightly sees all three, stable sees stable only. So a tester on beta gets the
 stable release the day it ships and is never left behind. Latest is still the
-newest `pub_date` among the accepted releases. The admin's version pills and
-the public history label anything that is not stable.
+newest `pub_date` among the accepted releases. The admin marks each
+release with the channels it is live on right now, says what a channel change
+will do before it is saved, and the public history labels anything that is not
+stable.
 
 ## Counts
 
@@ -180,8 +184,9 @@ or when the buffer fills, so a thousand update checks are one database write.
 The buffer is capped and an isolate that dies before its flush loses a few
 seconds of counts: the numbers are approximate by design.
 
-The admin page shows the last 30 days per app: checks per day as bars, then
-checks over the last week and downloads over the month per version.
+The admin's Adoption tab shows the last 30 days per app: checks per day as
+bars, split into apps already on the newest version and the rest, then checks
+over the last week and downloads over the month per version.
 `GET /:slug/stats` returns the rows to the operator; it is not public.
 
 ## Behaviour worth knowing
@@ -292,7 +297,19 @@ see each other's edits.
 
 ## Publishing: the admin page
 
-Sign in at `/login`, then drop a build output folder on `/admin`. The page:
+Sign in at `/login`. `/admin` lists every app; open one and it has four tabs,
+each its own address (`/admin#ctx/adoption`), so back and reload work:
+
+- **Releases**: the history as a rail, each release marked with the channels it
+  is live on, and the editor for the one that is open.
+- **Adoption**: the counts described above.
+- **Integrate**: every feed URL, download link and the badge, per channel, each
+  with a copy button. A feed the latest release cannot back yet is listed with
+  what it is missing, a `.sig` or a macOS build, not hidden.
+- **Settings**: rename, list or unlist, delete.
+
+To publish, start a new release or open an existing one and drop a build
+output folder anywhere on the page. The page:
 
 1. Pairs each installer with its `.sig` file by name.
 2. Guesses each platform key from the filename, shown in a dropdown you can
