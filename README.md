@@ -43,6 +43,7 @@ lib/demo.js            the same queries as db.js over demo/*.json, for /demo
 templates/*.html       real HTML files, imported as text modules
 vendor/                the Tailwind play build, a .txt so it imports as text too
 assets/herald.svg      the mark. assets/herald.logo.html shows it in every use
+design/                v1.html and v2.html, the whole UI frozen in one file each
 schema.sql
 test.mjs
 ```
@@ -400,6 +401,21 @@ Link straight at Herald and never touch the markup again on a release:
 <a href="https://herald.thinkdj.xyz/ctx/download/windows">Download for Windows</a>
 <a href="https://herald.thinkdj.xyz/ctx/download/macos">Download for macOS</a>
 ```
+
+## Design snapshots
+
+`design/v1.html` and `design/v2.html` are the first UI and the current one,
+each frozen into a single file that opens from disk. They are not mockups: the
+worker is bundled into the page and runs there in demo mode, so every page and
+every write works. `v2.html#/admin#ctx/adoption` opens a page directly. After
+a UI change, freeze it again:
+
+```sh
+node herald/design/build.mjs v2.html
+```
+
+`design/logo.html` holds the marks that were drawn before the Gatehouse was
+chosen. `v1.html` keeps the tower it had at the time.
 
 ## Tests
 
