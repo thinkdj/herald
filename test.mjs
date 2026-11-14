@@ -303,24 +303,24 @@ assert.equal(demo.inDemo(new Request("https://herald.example/")), false);
 const store = demo.createStore();
 assert.ok(store.demo, "a demo handle says so, which is how worker.js picks it over D1");
 const listed = demo.appsWithLatest(store);
-assert.deepEqual(listed.map((a) => a.slug), ["ctx", "nimbus", "orbit"], "sorted by name");
+assert.deepEqual(listed.map((a) => a.slug), ["ctx", "orbit", "refreshie"], "sorted by name");
 assert.equal(listed[0].version, "0.1.1", "newest pub_date wins");
 assert.equal(listed[0].channel, "stable");
-assert.equal(listed[1].version, "2.5.0", "the card shows the newest release whatever its channel");
-assert.equal(listed[1].channel, "beta");
+assert.equal(listed[2].version, "2.5.0", "the card shows the newest release whatever its channel");
+assert.equal(listed[2].channel, "beta");
 assert.deepEqual(listed[0].platforms, ["darwin-aarch64", "windows-x86_64"]);
 assert.equal(listed[0].signed, true, "ctx has a Tauri feed");
 assert.equal(listed[0].hashed, false);
-assert.equal(listed[1].hashed, true, "nimbus has an Electron feed");
-assert.equal(listed[2].version, null, "an app with no release still lists");
-assert.equal(listed[2].unlisted, true);
+assert.equal(listed[2].hashed, true, "refreshie has an Electron feed");
+assert.equal(listed[1].version, null, "an app with no release still lists");
+assert.equal(listed[1].unlisted, true);
 assert.equal(demo.releaseHistory(store, "ctx").length, 2);
 
 // Channels: stable sees stable only, beta sees the newer beta too.
-assert.equal(demo.latestRelease(store, "nimbus").version, "2.4.0", "a stable client does not get the beta");
-assert.equal(demo.latestRelease(store, "nimbus", "beta").version, "2.5.0");
-assert.equal(demo.latestRelease(store, "nimbus", "nightly").version, "2.5.0", "nightly accepts beta");
-assert.equal(demo.releaseHistory(store, "nimbus")[0].channel, "beta");
+assert.equal(demo.latestRelease(store, "refreshie").version, "2.4.0", "a stable client does not get the beta");
+assert.equal(demo.latestRelease(store, "refreshie", "beta").version, "2.5.0");
+assert.equal(demo.latestRelease(store, "refreshie", "nightly").version, "2.5.0", "nightly accepts beta");
+assert.equal(demo.releaseHistory(store, "refreshie")[0].channel, "beta");
 
 // Counts: one row per day, kind and version, bumped in place; unknown apps
 // write nothing; deleting an app takes its counts with it.

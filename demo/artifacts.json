@@ -26,7 +26,7 @@
   {
     "release_id": 3,
     "platform": "windows-x86_64",
-    "url": "https://herald.example/files/nimbus/2.4.0/Nimbus-Setup-2.4.0.exe",
+    "url": "https://herald.example/files/refreshie/2.4.0/Refreshie-Setup-2.4.0.exe",
     "signature": null,
     "sha512": "5jxpsno5gr2x8SxNxx6o9KCmJhoZSaKqwDWgOUuTRx1nh170/ZSz1lKS/tsT9//zzVL4tbG/azAabuTGmIuH7Q==",
     "size": 71303168
@@ -34,7 +34,7 @@
   {
     "release_id": 4,
     "platform": "windows-x86_64",
-    "url": "https://herald.example/files/nimbus/2.5.0/Nimbus-Setup-2.5.0.exe",
+    "url": "https://herald.example/files/refreshie/2.5.0/Refreshie-Setup-2.5.0.exe",
     "signature": null,
     "sha512": "JVy8G7IJCPrIPf7kLPbDETdLSplhTOREk6hFlofc+7w4k+k1njBm8/vH3Hiq+kHaDBDsQvtk7H4xUTdwjOSFtA==",
     "size": 72351744
@@ -42,7 +42,7 @@
   {
     "release_id": 4,
     "platform": "darwin-universal",
-    "url": "https://herald.example/files/nimbus/2.5.0/Nimbus-2.5.0-universal.dmg",
+    "url": "https://herald.example/files/refreshie/2.5.0/Refreshie-2.5.0-universal.dmg",
     "signature": null,
     "sha512": "8y4yUE7/2BLwlf/IWXJjCaupnmAYUwbtM87CLhzfJZjsPNSMK95V9dUZW9jicPl2+HSSDalNmmbomEG7XZp8bQ==",
     "size": 98566144
@@ -50,7 +50,7 @@
   {
     "release_id": 4,
     "platform": "linux-x86_64",
-    "url": "https://herald.example/files/nimbus/2.5.0/Nimbus-2.5.0.AppImage",
+    "url": "https://herald.example/files/refreshie/2.5.0/Refreshie-2.5.0.AppImage",
     "signature": null,
     "sha512": "VIGsQDT/y6R1mQ2OLhGKMOAj6WABAXH4ak9aCItvImxwWjtJBq9RofYT5i63RfF6Z/4Lm5lcE0KUFScIcIJUhQ==",
     "size": 84934656
