@@ -71,7 +71,12 @@
     "production": {
       "name": "herald",
       "workers_dev": false,
-      "routes": [{ "pattern": "herald.thinkdj.xyz", "custom_domain": true }],
+      // herald.think.dj is canonical; herald.thinkdj.xyz stays because installed
+      // apps poll the updater endpoint baked into them at that host.
+      "routes": [
+        { "pattern": "herald.think.dj", "custom_domain": true },
+        { "pattern": "herald.thinkdj.xyz", "custom_domain": true }
+      ],
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "herald" }],
       // Per client IP, per minute. Login is tight; admin and the write routes are
       // loose enough for a CI job uploading a whole release at once.
@@ -84,7 +89,7 @@
         {
           "binding": "DB",
           "database_name": "herald",
-          "database_id": ""
+          "database_id": "0e74798d-16b0-4f7e-8940-cf7013811f6b"
         }
       ]
     }
